@@ -16,7 +16,7 @@
 #define QK 32
 
 // default hparams (LLaMA76B)
-struct llama_hparams {
+struct llama_hyper_params {
     int32_t n_vocab = 32000;
     int32_t n_ctx   = 512;   // this is provided as user input?
     int32_t n_embd  = 4096;
@@ -71,7 +71,7 @@ bool llama_model_quantize(const std::string & fname_inp, const std::string & fna
         fout.write((char *) &magic, sizeof(magic));
     }
 
-    llama_hparams hparams;
+    llama_hyper_params hparams;
 
     // load hparams
     {

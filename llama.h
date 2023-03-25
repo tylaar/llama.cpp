@@ -18,6 +18,9 @@
 #include <vector>
 #include <fmt/core.h>
 
+#define SPLIT_TYPE_COLUMN 0
+#define SPLIT_TYPE_ROW    1
+
 // determine number of model parts based on the dimension
 static const std::map<int, int> LLAMA_N_PARTS = {
         { 4096, 1 },
@@ -27,7 +30,7 @@ static const std::map<int, int> LLAMA_N_PARTS = {
 };
 
 // default hparams (LLaMA 7B)
-struct llama_hparams {
+struct llama_hyper_params {
     int32_t n_vocab = 32000;
     int32_t n_ctx   = 512;   // this is provided as user input?
     int32_t n_embd  = 4096;
@@ -39,11 +42,18 @@ struct llama_hparams {
 };
 
 // default loading parameters
-struct llama_lparams {
+class llama_load_ctx {
+public:
     int n_ff;
     int n_parts;
     int split_type;
     ggml_type wtype;
+
+    size_t determine_bpe(int32_t ftype, int ne[]);
+
+    bool is_column_split_type() {
+        return split_type == SPLIT_TYPE_COLUMN;
+    }
 };
 
 class llama_layer {
@@ -85,8 +95,8 @@ public:
 
 class llama_model {
 public:
-    llama_hparams hparams;
-    llama_lparams lparams;
+    llama_hyper_params hparams;
+    llama_load_ctx load_ctx;
 
     // First go through tok embedding
     struct ggml_tensor * tok_embeddings;
@@ -113,7 +123,13 @@ private:
     // checking if file magic number matched.
     bool verify_model_magic(std::ifstream& fin);
     // verify tensor shape and dimension.
-    bool verify_tensor_shape_and_dim(std::string& name, ggml_tensor* tensor, int n_dims, int ne[], int nelements);
+    bool verify_tensor_shape_and_dim(ggml_tensor* tensor, std::string& name, int n_parts, int n_dims, int nelements, int ne[]);
+
+    bool verify_tensor_one_dimension(ggml_tensor* tensor, std::string& name, int nelements, int ne[]);
+    // verify tensor shape in column mode
+    bool verify_tensor_shape_by_column(ggml_tensor *tensor, std::string& name, int n_parts, int nelements, int ne[]);
+    // verify tensor shape in row mode
+    bool verify_tensor_shape_by_row(ggml_tensor *tensor, std::string& name, int n_parts, int nelements, int ne[]);
     // load hparams for model metadata purpose.
     void load_model_hyper_params(std::ifstream &fin, int n_ctx);
     // load model's vocab
