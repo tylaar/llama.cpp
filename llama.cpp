@@ -486,8 +486,6 @@ bool llama_model::eval_model(
         size_t                     & mem_per_token) {
     const int N = embd_inp.size();
 
-    //const auto & hparams = hparams;
-
     const int n_embd  = hparams.n_embd;
     const int n_layer = hparams.n_layer;
     const int n_ctx   = hparams.n_ctx;
@@ -533,8 +531,6 @@ bool llama_model::eval_model(
         struct ggml_tensor * inpSA = inpL;
 
         struct ggml_tensor * cur;
-
-        // model->layers[il].llama_layer_debug();
         // norm
         {
             cur = ggml_rms_norm(ctx0, inpL);
@@ -639,18 +635,14 @@ bool llama_model::eval_model(
                                                     cur);
 
 
-            cur = ggml_mul_mat(ctx0,
-                               layers[il].w1,
-                               cur);
+            cur = ggml_mul_mat(ctx0,layers[il].w1,cur);
 
             // SILU activation
             cur = ggml_silu(ctx0, cur);
 
             cur = ggml_mul(ctx0, cur, tmp);
 
-            cur = ggml_mul_mat(ctx0,
-                               layers[il].w2,
-                               cur);
+            cur = ggml_mul_mat(ctx0,layers[il].w2,cur);
         }
 
         cur  = ggml_add(ctx0, cur, inpFF);
