@@ -342,112 +342,13 @@ bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_c
             fprintf(stderr, "%s: ", __func__);
 
             while (true) {
-                int32_t n_dims;
-                int32_t length;
-                int32_t ftype;
-
-                fin.read(reinterpret_cast<char *>(&n_dims), sizeof(n_dims));
-                fin.read(reinterpret_cast<char *>(&length), sizeof(length));
-                fin.read(reinterpret_cast<char *>(&ftype), sizeof(ftype));
-
-                if (fin.eof()) {
+                auto partial_size = load_model_tensor(fin, part_id);
+                if (partial_size == -1) {
                     break;
-                }
-
-                int32_t nelements = 1;
-                int32_t ne[2] = {1, 1};
-                for (int i = 0; i < n_dims; ++i) {
-                    fin.read(reinterpret_cast<char *>(&ne[i]), sizeof(ne[i]));
-                    nelements *= ne[i];
-                }
-
-                std::string name(length, 0);
-                fin.read(&name[0], length);
-
-                if (this->tensors.find(name.data()) == this->tensors.end()) {
-                    fprintf(stderr, "%s: unknown tensor '%s' in model file\n", __func__, name.data());
-                    return false;
-                }
-
-                determine_ggml_file_split(name);
-                auto tensor = this->tensors[name.data()];
-                if (!verify_tensor_shape_and_dim(name, tensor, n_dims, ne, nelements)) {
-                    return false;
-                }
-
-                size_t bpe = 0;
-
-                switch (ftype) {
-                    case 0:
-                        bpe = ggml_type_size(GGML_TYPE_F32);
-                        break;
-                    case 1:
-                        bpe = ggml_type_size(GGML_TYPE_F16);
-                        break;
-                    case 2:
-                        bpe = ggml_type_size(GGML_TYPE_Q4_0);
-                        assert(ne[0] % 64 == 0);
-                        break;
-                    case 3:
-                        bpe = ggml_type_size(GGML_TYPE_Q4_1);
-                        assert(ne[0] % 64 == 0);
-                        break;
-                    default: {
-                        fprintf(stderr, "%s: unknown ftype %d in model file\n", __func__, ftype);
-                        return false;
-                    }
-                };
-
-                if (n_dims == 1 || lparams.n_parts == 1) {
-                    if ((nelements * bpe) / ggml_blck_size(tensor->type) != ggml_nbytes(tensor)) {
-                        fprintf(stderr, "%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
-                                __func__, name.data(), ggml_nbytes(tensor), nelements * bpe);
-                        return false;
-                    }
-
-                    if (part_id == 0) {
-                        fin.read(reinterpret_cast<char *>(tensor->data), ggml_nbytes(tensor));
-                    } else {
-                        fin.seekg(ggml_nbytes(tensor), std::ios::cur);
-                    }
-
-                    total_size += ggml_nbytes(tensor);
                 } else {
-                    if ((nelements * bpe) / ggml_blck_size(tensor->type) != ggml_nbytes(tensor) / (lparams.n_parts)) {
-                        fprintf(stderr, "%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
-                                __func__, name.data(), ggml_nbytes(tensor) / lparams.n_parts, nelements * bpe);
-                        return false;
-                    }
-
-                    if (lparams.split_type == 0) {
-                        const int np0 = ne[0];
-
-                        const size_t row_size =
-                                (tensor->ne[0] / ggml_blck_size(tensor->type)) * ggml_type_size(tensor->type);
-                        assert(row_size == tensor->nb[1]);
-
-                        for (int i1 = 0; i1 < ne[1]; ++i1) {
-                            const size_t offset_row = i1 * row_size;
-                            const size_t offset = offset_row + ((part_id * np0) / ggml_blck_size(tensor->type)) *
-                                                               ggml_type_size(tensor->type);
-                            fin.read(reinterpret_cast<char *>(tensor->data) + offset, row_size / lparams.n_parts);
-                        }
-                    } else {
-                        const int np1 = ne[1];
-
-                        const size_t row_size =
-                                (tensor->ne[0] / ggml_blck_size(tensor->type)) * ggml_type_size(tensor->type);
-
-                        for (int i1 = 0; i1 < ne[1]; ++i1) {
-                            const size_t offset_row = (i1 + part_id * np1) * row_size;
-                            fin.read(reinterpret_cast<char *>(tensor->data) + offset_row, row_size);
-                        }
-                    }
-
-                    total_size += ggml_nbytes(tensor) / lparams.n_parts;
+                    total_size += partial_size;
                 }
-
-                //fprintf(stderr, "%42s - [%5d, %5d], type = %6s, %6.2f MB\n", name.data(), ne[0], ne[1], ftype == 0 ? "float" : "f16", ggml_nbytes(tensor)/1024.0/1024.0);
+                //
                 if (++n_tensors % 8 == 0) {
                     fprintf(stderr, ".");
                     fflush(stderr);
@@ -455,15 +356,124 @@ bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_c
             }
 
             fprintf(stderr, " done\n");
-
-            fprintf(stderr, "%s: model size = %8.2f MB / num tensors = %d\n", __func__, total_size / 1024.0 / 1024.0,
-                    n_tensors);
         }
+
         fin.close();
     }
     return true;
 }
 
+int llama_model::load_model_tensor(std::ifstream &fin, int part_id) {
+    int32_t n_dims;
+    int32_t length;
+    int32_t ftype;
+    size_t total_size = 0;
+
+    fin.read(reinterpret_cast<char *>(&n_dims), sizeof(n_dims));
+    fin.read(reinterpret_cast<char *>(&length), sizeof(length));
+    fin.read(reinterpret_cast<char *>(&ftype), sizeof(ftype));
+
+    if (fin.eof()) {
+        return -1;
+    }
+
+    int32_t nelements = 1;
+    int32_t ne[2] = {1, 1};
+    for (int i = 0; i < n_dims; ++i) {
+        fin.read(reinterpret_cast<char *>(&ne[i]), sizeof(ne[i]));
+        nelements *= ne[i];
+    }
+
+    std::string name(length, 0);
+    fin.read(&name[0], length);
+
+    if (this->tensors.find(name.data()) == this->tensors.end()) {
+        fprintf(stderr, "%s: unknown tensor '%s' in model file\n", __func__, name.data());
+        return false;
+    }
+
+    determine_ggml_file_split(name);
+    auto tensor = this->tensors[name.data()];
+    if (!verify_tensor_shape_and_dim(name, tensor, n_dims, ne, nelements)) {
+        return false;
+    }
+
+    size_t bpe = 0;
+
+    switch (ftype) {
+        case 0:
+            bpe = ggml_type_size(GGML_TYPE_F32);
+            break;
+        case 1:
+            bpe = ggml_type_size(GGML_TYPE_F16);
+            break;
+        case 2:
+            bpe = ggml_type_size(GGML_TYPE_Q4_0);
+            assert(ne[0] % 64 == 0);
+            break;
+        case 3:
+            bpe = ggml_type_size(GGML_TYPE_Q4_1);
+            assert(ne[0] % 64 == 0);
+            break;
+        default: {
+            fprintf(stderr, "%s: unknown ftype %d in model file\n", __func__, ftype);
+            return false;
+        }
+    };
+
+    if (n_dims == 1 || lparams.n_parts == 1) {
+        if ((nelements * bpe) / ggml_blck_size(tensor->type) != ggml_nbytes(tensor)) {
+            fprintf(stderr, "%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
+                    __func__, name.data(), ggml_nbytes(tensor), nelements * bpe);
+            return false;
+        }
+
+        if (part_id == 0) {
+            fin.read(reinterpret_cast<char *>(tensor->data), ggml_nbytes(tensor));
+        } else {
+            fin.seekg(ggml_nbytes(tensor), std::ios::cur);
+        }
+
+        total_size += ggml_nbytes(tensor);
+    } else {
+        if ((nelements * bpe) / ggml_blck_size(tensor->type) != ggml_nbytes(tensor) / (lparams.n_parts)) {
+            fprintf(stderr, "%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
+                    __func__, name.data(), ggml_nbytes(tensor) / lparams.n_parts, nelements * bpe);
+            return false;
+        }
+
+        if (lparams.split_type == 0) {
+            const int np0 = ne[0];
+
+            const size_t row_size =
+                    (tensor->ne[0] / ggml_blck_size(tensor->type)) * ggml_type_size(tensor->type);
+            assert(row_size == tensor->nb[1]);
+
+            for (int i1 = 0; i1 < ne[1]; ++i1) {
+                const size_t offset_row = i1 * row_size;
+                const size_t offset = offset_row + ((part_id * np0) / ggml_blck_size(tensor->type)) *
+                                                   ggml_type_size(tensor->type);
+                fin.read(reinterpret_cast<char *>(tensor->data) + offset, row_size / lparams.n_parts);
+            }
+        } else {
+            const int np1 = ne[1];
+
+            const size_t row_size =
+                    (tensor->ne[0] / ggml_blck_size(tensor->type)) * ggml_type_size(tensor->type);
+
+            for (int i1 = 0; i1 < ne[1]; ++i1) {
+                const size_t offset_row = (i1 + part_id * np1) * row_size;
+                fin.read(reinterpret_cast<char *>(tensor->data) + offset_row, row_size);
+            }
+        }
+
+        total_size += ggml_nbytes(tensor) / lparams.n_parts;
+    }
+
+    fprintf(stderr, "%42s - [%5d, %5d], type = %6s, %6.2f MB\n", name.data(), ne[0], ne[1], ftype == 0 ? "float" : "f16", ggml_nbytes(tensor)/1024.0/1024.0);
+    
+    return total_size;
+}
 
 // evaluate the transformer
 //

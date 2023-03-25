@@ -118,6 +118,7 @@ private:
     void load_model_hyper_params(std::ifstream &fin, int n_ctx);
     // load model's vocab
     void load_model_vocab(std::ifstream &fin, gpt_vocab& vocab);
+    int load_model_tensor(std::ifstream &fin, int part_id);
     // build model ctx unit according to data type.
     bool build_model_ctx();
     // determine ggml type based on hyperparams.
