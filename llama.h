@@ -98,12 +98,18 @@ public:
 
     // load the model's weights from a file
     bool load_model(const std::string & fname, gpt_vocab & vocab, int n_ctx);
+    bool eval_model(const int n_threads, const int n_past, const std::vector<gpt_vocab::id> &embd_inp, std::vector<float>         & embd_w,
+                    size_t                     & mem_per_token);
 private:
+    // checking if file magic number matched.
     bool verify_model_magic(std::ifstream& fin);
-
+    // load hparams for model metadata purpose.
     std::pair<int, int> load_model_hyper_params(std::ifstream &fin, int n_ctx);
+    // load model's vocab
     void load_model_vocab(std::ifstream &fin, gpt_vocab& vocab);
+    // build model ctx unit according to data type.
     bool build_model_ctx(ggml_type wtype, int n_ff, int n_part);
+    // determine ggml type based on hyperparams.
     ggml_type determine_ggml_wtype();
 };
 
