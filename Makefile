@@ -179,6 +179,30 @@ ggml.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/ggml.dir/build.make CMakeFiles/ggml.dir/ggml.c.s
 .PHONY : ggml.c.s
 
+llama.o: llama.cpp.o
+.PHONY : llama.o
+
+# target to build an object file
+llama.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama.cpp.o
+.PHONY : llama.cpp.o
+
+llama.i: llama.cpp.i
+.PHONY : llama.i
+
+# target to preprocess a source file
+llama.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama.cpp.i
+.PHONY : llama.cpp.i
+
+llama.s: llama.cpp.s
+.PHONY : llama.s
+
+# target to generate assembly for a file
+llama.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama.cpp.s
+.PHONY : llama.cpp.s
+
 main.o: main.cpp.o
 .PHONY : main.o
 
@@ -268,6 +292,9 @@ help:
 	@echo "... ggml.o"
 	@echo "... ggml.i"
 	@echo "... ggml.s"
+	@echo "... llama.o"
+	@echo "... llama.i"
+	@echo "... llama.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"

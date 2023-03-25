@@ -109,9 +109,10 @@ endif()
 # endif()
 
 add_executable(llama
-    main.cpp
-    utils.cpp
-    utils.h)
+        main.cpp
+        utils.cpp
+        llama.cpp
+        utils.h)
 
 add_executable(quantize
     quantize.cpp
@@ -119,8 +120,8 @@ add_executable(quantize
     utils.h)
 
 add_library(ggml
-    ggml.c
-    ggml.h)
+        ggml.c
+        ggml.h)
 
 target_compile_definitions(ggml PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_compile_definitions(llama PUBLIC ${LLAMA_EXTRA_FLAGS})

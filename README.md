@@ -52,20 +52,20 @@ I CXX:      Apple clang version 14.0.0 (clang-1400.0.29.202)
 
 make: Nothing to be done for `default'.
 main: seed = 1678486056
-llama_model_load: loading model from './models/7B/ggml-model-q4_0.bin' - please wait ...
-llama_model_load: n_vocab = 32000
-llama_model_load: n_ctx   = 512
-llama_model_load: n_embd  = 4096
-llama_model_load: n_mult  = 256
-llama_model_load: n_head  = 32
-llama_model_load: n_layer = 32
-llama_model_load: n_rot   = 128
-llama_model_load: f16     = 2
-llama_model_load: n_ff    = 11008
-llama_model_load: ggml ctx size = 4529.34 MB
-llama_model_load: memory_size =   512.00 MB, n_mem = 16384
-llama_model_load: .................................... done
-llama_model_load: model size =  4017.27 MB / num tensors = 291
+load_model: loading model from './models/7B/ggml-model-q4_0.bin' - please wait ...
+load_model: n_vocab = 32000
+load_model: n_ctx   = 512
+load_model: n_embd  = 4096
+load_model: n_mult  = 256
+load_model: n_head  = 32
+load_model: n_layer = 32
+load_model: n_rot   = 128
+load_model: f16     = 2
+load_model: n_ff    = 11008
+load_model: ggml ctx size = 4529.34 MB
+load_model: memory_size =   512.00 MB, n_mem = 16384
+load_model: .................................... done
+load_model: model size =  4017.27 MB / num tensors = 291
 
 main: prompt: 'Building a website can be done in 10 simple steps:'
 main: number of tokens in prompt = 15

@@ -6,8 +6,6 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <fstream>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -344,7 +342,7 @@ int main(int argc, char ** argv) {
     // load the model
     {
         const int64_t t_start_us = ggml_time_us();
-        if (!model->llama_model_load(params.model, vocab, params.n_ctx)) {
+        if (!model->load_model(params.model, vocab, params.n_ctx)) {
             fprintf(stderr, "%s: failed to load model from '%s'\n", __func__, params.model.c_str());
             return 1;
         }
