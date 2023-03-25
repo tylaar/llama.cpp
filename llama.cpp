@@ -110,12 +110,16 @@ void llama_model::determine_ggml_wtype() {
     switch (hparams.f16) {
         case 0:
             lparams.wtype = GGML_TYPE_F32;
+            break;
         case 1:
             lparams.wtype = GGML_TYPE_F16;
+            break;
         case 2:
             lparams.wtype = GGML_TYPE_Q4_0;
+            break;
         case 3:
             lparams.wtype = GGML_TYPE_Q4_1;
+            break;
         default: {
         }
     }
