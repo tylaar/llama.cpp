@@ -15,12 +15,50 @@ bool llama_model::verify_model_magic(std::ifstream &fin) {
     return true;
 }
 
-std::pair<int, int> llama_model::load_model_hyper_params(std::ifstream &fin, int n_ctx) {
+bool llama_model::verify_tensor_shape_and_dim(std::string& name, ggml_tensor* tensor, int n_dims, int ne[], int nelements) {
+    if (n_dims == 1) {
+        if (ggml_nelements(tensor) != nelements) {
+            fprintf(stderr, "%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
+            return false;
+        }
+    } else {
+        if (ggml_nelements(tensor) / lparams.n_parts != nelements) {
+            fprintf(stderr, "%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
+            return false;
+        }
+    }
+
+    if (n_dims == 1) {
+        if (tensor->ne[0] != ne[0] || tensor->ne[1] != ne[1]) {
+            fprintf(stderr,
+                    "%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
+                    __func__, name.data(), tensor->ne[0], tensor->ne[1], ne[0], ne[1]);
+            return false;
+        }
+    } else {
+        if (lparams.split_type == 0) {
+            if (tensor->ne[0] / lparams.n_parts != ne[0] || tensor->ne[1] != ne[1]) {
+                fprintf(stderr,
+                        "%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
+                        __func__, name.data(), tensor->ne[0] / lparams.n_parts, tensor->ne[1], ne[0], ne[1]);
+                return false;
+            }
+        } else {
+            if (tensor->ne[0] != ne[0] || tensor->ne[1] / lparams.n_parts != ne[1]) {
+                fprintf(stderr,
+                        "%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
+                        __func__, name.data(), tensor->ne[0], tensor->ne[1] / lparams.n_parts, ne[0], ne[1]);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+void llama_model::load_model_hyper_params(std::ifstream &fin, int n_ctx) {
     // load hparams
     int n_ff = 0;
     int n_parts = 0;
-
-    auto &hparams = this->hparams;
 
     fin.read((char *) &hparams.n_vocab, sizeof(hparams.n_vocab));
     //fin.read((char *) &hparams.n_ctx,   sizeof(hparams.n_ctx));
@@ -47,7 +85,8 @@ std::pair<int, int> llama_model::load_model_hyper_params(std::ifstream &fin, int
     fprintf(stderr, "%s: n_ff    = %d\n", __func__, n_ff);
     fprintf(stderr, "%s: n_parts = %d\n", __func__, n_parts);
 
-    return {n_ff, n_parts};
+    this->lparams.n_parts = n_parts;
+    this->lparams.n_ff = n_ff;
 }
 
 void llama_model::load_model_vocab(std::ifstream &fin, gpt_vocab& vocab) {
@@ -61,60 +100,54 @@ void llama_model::load_model_vocab(std::ifstream &fin, gpt_vocab& vocab) {
 
         vocab.token_to_id[word] = i;
         vocab.id_to_token[i] = word;
-
-        //if (i < 30000) {
-        //    fprintf(stderr, "%s: vocab[%d] = '%s'\n", __func__, i, word.c_str());
-        //}
     }
 }
 
-ggml_type llama_model::determine_ggml_wtype() {
+void llama_model::determine_ggml_wtype() {
     // for the big tensors, we have the option to store the data in 16-bit floats or quantized
     // in order to save memory and also to speed up the computation
-    ggml_type wtype = GGML_TYPE_COUNT;
+    lparams.wtype = GGML_TYPE_COUNT;
     switch (hparams.f16) {
         case 0:
-            return GGML_TYPE_F32;
+            lparams.wtype = GGML_TYPE_F32;
         case 1:
-            return GGML_TYPE_F16;
+            lparams.wtype = GGML_TYPE_F16;
         case 2:
-            return GGML_TYPE_Q4_0;
+            lparams.wtype = GGML_TYPE_Q4_0;
         case 3:
-            return GGML_TYPE_Q4_1;
+            lparams.wtype = GGML_TYPE_Q4_1;
         default: {
-            return wtype;
         }
     }
 }
-bool llama_model::build_model_ctx(ggml_type wtype, int n_ff, int n_parts) {
+bool llama_model::build_model_ctx() {
     //auto &ctx = this->ctx;
     size_t ctx_size = 0;
     {
-        const auto &hparams = this->hparams;
 
         const int n_embd = hparams.n_embd;
         const int n_layer = hparams.n_layer;
         const int n_ctx = hparams.n_ctx;
         const int n_vocab = hparams.n_vocab;
 
-        ctx_size += n_embd * n_vocab * ggml_type_sizef(wtype); // tok_embeddings
+        ctx_size += n_embd * n_vocab * ggml_type_sizef(lparams.wtype); // tok_embeddings
 
         ctx_size += n_embd * ggml_type_sizef(GGML_TYPE_F32); // norm
 
-        ctx_size += n_embd * n_vocab * ggml_type_sizef(wtype); // output
+        ctx_size += n_embd * n_vocab * ggml_type_sizef(lparams.wtype); // output
 
         ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // attention_norm
 
-        ctx_size += n_layer * (n_embd * n_embd * ggml_type_sizef(wtype)); // wq
-        ctx_size += n_layer * (n_embd * n_embd * ggml_type_sizef(wtype)); // wk
-        ctx_size += n_layer * (n_embd * n_embd * ggml_type_sizef(wtype)); // wv
-        ctx_size += n_layer * (n_embd * n_embd * ggml_type_sizef(wtype)); // wo
+        ctx_size += n_layer * (n_embd * n_embd * ggml_type_sizef(lparams.wtype)); // wq
+        ctx_size += n_layer * (n_embd * n_embd * ggml_type_sizef(lparams.wtype)); // wk
+        ctx_size += n_layer * (n_embd * n_embd * ggml_type_sizef(lparams.wtype)); // wv
+        ctx_size += n_layer * (n_embd * n_embd * ggml_type_sizef(lparams.wtype)); // wo
 
         ctx_size += n_layer * (n_embd * ggml_type_sizef(GGML_TYPE_F32)); // ffn_norm
 
-        ctx_size += n_layer * (n_ff * n_embd * ggml_type_sizef(wtype)); // w1
-        ctx_size += n_layer * (n_ff * n_embd * ggml_type_sizef(wtype)); // w2
-        ctx_size += n_layer * (n_ff * n_embd * ggml_type_sizef(wtype)); // w3
+        ctx_size += n_layer * (lparams.n_ff * n_embd * ggml_type_sizef(lparams.wtype)); // w1
+        ctx_size += n_layer * (lparams.n_ff * n_embd * ggml_type_sizef(lparams.wtype)); // w2
+        ctx_size += n_layer * (lparams.n_ff * n_embd * ggml_type_sizef(lparams.wtype)); // w3
 
         ctx_size += n_ctx * n_layer * n_embd * ggml_type_sizef(GGML_TYPE_F32); // memory_k
         ctx_size += n_ctx * n_layer * n_embd * ggml_type_sizef(GGML_TYPE_F32); // memory_v
@@ -140,6 +173,40 @@ bool llama_model::build_model_ctx(ggml_type wtype, int n_ff, int n_parts) {
     return true;
 }
 
+void llama_model::determine_ggml_file_split(std::string& name) {
+    // split_type = 0: split by columns
+    // split_type = 1: split by rows
+    int split_type = 0;
+
+    // split_type = 0:
+    // regex:
+    //   - tok_embeddings.*
+    //   - layers.*.attention.wo.weight
+    //   - layers.*.feed_forward.w2.weight
+
+    // split_type = 1:
+    // regex:
+    //   - output.*
+    //   - layers.*.attention.wq.weight
+    //   - layers.*.attention.wk.weight
+    //   - layers.*.attention.wv.weight
+    //   - layers.*.feed_forward.w1.weight
+    //   - layers.*.feed_forward.w3.weight
+    if (name.find("tok_embeddings") != std::string::npos) {
+        this->lparams.split_type = 0;
+    } else if (name.find("layers") != std::string::npos) {
+        if (name.find("attention.wo.weight") != std::string::npos) {
+            this->lparams.split_type = 0;
+        } else if (name.find("feed_forward.w2.weight") != std::string::npos) {
+            this->lparams.split_type = 0;
+        } else {
+            this->lparams.split_type = 1;
+        }
+    } else if (name.find("output") != std::string::npos) {
+        this->lparams.split_type = 1;
+    }
+}
+
 bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_ctx) {
     fprintf(stderr, "%s: loading model from '%s' - please wait ...\n", __func__, fname.c_str());
 
@@ -158,14 +225,12 @@ bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_c
         return false;
     }
 
-    auto hparams_count = load_model_hyper_params(fin, n_ctx);
-    int n_ff = hparams_count.first ;
-    int n_parts = hparams_count.second;
-
+    load_model_hyper_params(fin, n_ctx);
     load_model_vocab(fin, vocab);
-    auto wtype = determine_ggml_wtype();
 
-    if (!build_model_ctx(wtype, n_ff, n_parts)) {
+    determine_ggml_wtype();
+
+    if (!build_model_ctx()) {
         fprintf(stderr, "%s: invalid model file '%s' (bad f16 value %d)\n",
                 __func__, fname.c_str(), this->hparams.f16);
         return false;
@@ -182,10 +247,10 @@ bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_c
 
         this->layers.resize(n_layer);
 
-        this->tok_embeddings = ggml_new_tensor_2d(ctx, wtype, n_embd, n_vocab);
+        this->tok_embeddings = ggml_new_tensor_2d(ctx, lparams.wtype, n_embd, n_vocab);
 
         this->norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
-        this->output = ggml_new_tensor_2d(ctx, wtype, n_embd, n_vocab);
+        this->output = ggml_new_tensor_2d(ctx, lparams.wtype, n_embd, n_vocab);
 
         // map by name
         this->tensors["tok_embeddings.weight"] = this->tok_embeddings;
@@ -198,16 +263,16 @@ bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_c
 
             layer.attention_norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
 
-            layer.wq = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
-            layer.wk = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
-            layer.wv = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
-            layer.wo = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
+            layer.wq = ggml_new_tensor_2d(ctx, lparams.wtype, n_embd, n_embd);
+            layer.wk = ggml_new_tensor_2d(ctx, lparams.wtype, n_embd, n_embd);
+            layer.wv = ggml_new_tensor_2d(ctx, lparams.wtype, n_embd, n_embd);
+            layer.wo = ggml_new_tensor_2d(ctx, lparams.wtype, n_embd, n_embd);
 
             layer.ffn_norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
 
-            layer.w1 = ggml_new_tensor_2d(ctx, wtype, n_embd, n_ff);
-            layer.w2 = ggml_new_tensor_2d(ctx, wtype, n_ff, n_embd);
-            layer.w3 = ggml_new_tensor_2d(ctx, wtype, n_embd, n_ff);
+            layer.w1 = ggml_new_tensor_2d(ctx, lparams.wtype, n_embd, lparams.n_ff);
+            layer.w2 = ggml_new_tensor_2d(ctx, lparams.wtype, lparams.n_ff, n_embd);
+            layer.w3 = ggml_new_tensor_2d(ctx, lparams.wtype, n_embd, lparams.n_ff);
 
             // map by name
             this->tensors["layers." + std::to_string(i) + ".attention_norm.weight"] = layer.attention_norm;
@@ -250,7 +315,7 @@ bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_c
 
     std::vector<uint8_t> tmp;
 
-    for (int i = 0; i < n_parts; ++i) {
+    for (int i = 0; i < lparams.n_parts; ++i) {
         const int part_id = i;
         //const int part_id = n_parts - i - 1;
 
@@ -259,7 +324,7 @@ bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_c
             fname_part += "." + std::to_string(i);
         }
 
-        fprintf(stderr, "%s: loading model part %d/%d from '%s'\n", __func__, i + 1, n_parts, fname_part.c_str());
+        fprintf(stderr, "%s: loading model part %d/%d from '%s'\n", __func__, i + 1, lparams.n_parts, fname_part.c_str());
 
         fin = std::ifstream(fname_part, std::ios::binary);
         fin.rdbuf()->pubsetbuf(f_buf.data(), f_buf.size());
@@ -300,81 +365,10 @@ bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_c
                     return false;
                 }
 
-                // split_type = 0: split by columns
-                // split_type = 1: split by rows
-                int split_type = 0;
-
-                // split_type = 0:
-                // regex:
-                //   - tok_embeddings.*
-                //   - layers.*.attention.wo.weight
-                //   - layers.*.feed_forward.w2.weight
-
-                // split_type = 1:
-                // regex:
-                //   - output.*
-                //   - layers.*.attention.wq.weight
-                //   - layers.*.attention.wk.weight
-                //   - layers.*.attention.wv.weight
-                //   - layers.*.feed_forward.w1.weight
-                //   - layers.*.feed_forward.w3.weight
-                if (name.find("tok_embeddings") != std::string::npos) {
-                    split_type = 0;
-                } else if (name.find("layers") != std::string::npos) {
-                    if (name.find("attention.wo.weight") != std::string::npos) {
-                        split_type = 0;
-                    } else if (name.find("feed_forward.w2.weight") != std::string::npos) {
-                        split_type = 0;
-                    } else {
-                        split_type = 1;
-                    }
-                } else if (name.find("output") != std::string::npos) {
-                    split_type = 1;
-                }
-
+                determine_ggml_file_split(name);
                 auto tensor = this->tensors[name.data()];
-
-                if (n_dims == 1) {
-                    if (ggml_nelements(tensor) != nelements) {
-                        fprintf(stderr, "%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
-                        return false;
-                    }
-                } else {
-                    if (ggml_nelements(tensor) / n_parts != nelements) {
-                        fprintf(stderr, "%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
-                        return false;
-                    }
-                }
-
-                if (n_dims == 1) {
-                    if (tensor->ne[0] != ne[0] || tensor->ne[1] != ne[1]) {
-                        fprintf(stderr,
-                                "%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
-                                __func__, name.data(), tensor->ne[0], tensor->ne[1], ne[0], ne[1]);
-                        return false;
-                    }
-                } else {
-                    if (split_type == 0) {
-                        if (tensor->ne[0] / n_parts != ne[0] || tensor->ne[1] != ne[1]) {
-                            fprintf(stderr,
-                                    "%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
-                                    __func__, name.data(), tensor->ne[0] / n_parts, tensor->ne[1], ne[0], ne[1]);
-                            return false;
-                        }
-                    } else {
-                        if (tensor->ne[0] != ne[0] || tensor->ne[1] / n_parts != ne[1]) {
-                            fprintf(stderr,
-                                    "%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
-                                    __func__, name.data(), tensor->ne[0], tensor->ne[1] / n_parts, ne[0], ne[1]);
-                            return false;
-                        }
-                    }
-                }
-
-                if (0) {
-                    static const char *ftype_str[] = {"f32", "f16", "q4_0", "q4_1",};
-                    fprintf(stderr, "%24s - [%5d, %5d], type = %6s, split = %d\n", name.data(), ne[0], ne[1],
-                            ftype_str[ftype], split_type);
+                if (!verify_tensor_shape_and_dim(name, tensor, n_dims, ne, nelements)) {
+                    return false;
                 }
 
                 size_t bpe = 0;
@@ -400,7 +394,7 @@ bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_c
                     }
                 };
 
-                if (n_dims == 1 || n_parts == 1) {
+                if (n_dims == 1 || lparams.n_parts == 1) {
                     if ((nelements * bpe) / ggml_blck_size(tensor->type) != ggml_nbytes(tensor)) {
                         fprintf(stderr, "%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
                                 __func__, name.data(), ggml_nbytes(tensor), nelements * bpe);
@@ -415,13 +409,13 @@ bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_c
 
                     total_size += ggml_nbytes(tensor);
                 } else {
-                    if ((nelements * bpe) / ggml_blck_size(tensor->type) != ggml_nbytes(tensor) / n_parts) {
+                    if ((nelements * bpe) / ggml_blck_size(tensor->type) != ggml_nbytes(tensor) / (lparams.n_parts)) {
                         fprintf(stderr, "%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
-                                __func__, name.data(), ggml_nbytes(tensor) / n_parts, nelements * bpe);
+                                __func__, name.data(), ggml_nbytes(tensor) / lparams.n_parts, nelements * bpe);
                         return false;
                     }
 
-                    if (split_type == 0) {
+                    if (lparams.split_type == 0) {
                         const int np0 = ne[0];
 
                         const size_t row_size =
@@ -432,7 +426,7 @@ bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_c
                             const size_t offset_row = i1 * row_size;
                             const size_t offset = offset_row + ((part_id * np0) / ggml_blck_size(tensor->type)) *
                                                                ggml_type_size(tensor->type);
-                            fin.read(reinterpret_cast<char *>(tensor->data) + offset, row_size / n_parts);
+                            fin.read(reinterpret_cast<char *>(tensor->data) + offset, row_size / lparams.n_parts);
                         }
                     } else {
                         const int np1 = ne[1];
@@ -446,7 +440,7 @@ bool llama_model::load_model(const std::string &fname, gpt_vocab &vocab, int n_c
                         }
                     }
 
-                    total_size += ggml_nbytes(tensor) / n_parts;
+                    total_size += ggml_nbytes(tensor) / lparams.n_parts;
                 }
 
                 //fprintf(stderr, "%42s - [%5d, %5d], type = %6s, %6.2f MB\n", name.data(), ne[0], ne[1], ftype == 0 ? "float" : "f16", ggml_nbytes(tensor)/1024.0/1024.0);

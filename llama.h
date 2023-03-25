@@ -38,6 +38,14 @@ struct llama_hparams {
     int32_t f16     = 1;
 };
 
+// default loading parameters
+struct llama_lparams {
+    int n_ff;
+    int n_parts;
+    int split_type;
+    ggml_type wtype;
+};
+
 class llama_layer {
 public:
     // normalization
@@ -78,6 +86,7 @@ public:
 class llama_model {
 public:
     llama_hparams hparams;
+    llama_lparams lparams;
 
     // First go through tok embedding
     struct ggml_tensor * tok_embeddings;
@@ -103,14 +112,17 @@ public:
 private:
     // checking if file magic number matched.
     bool verify_model_magic(std::ifstream& fin);
+    // verify tensor shape and dimension.
+    bool verify_tensor_shape_and_dim(std::string& name, ggml_tensor* tensor, int n_dims, int ne[], int nelements);
     // load hparams for model metadata purpose.
-    std::pair<int, int> load_model_hyper_params(std::ifstream &fin, int n_ctx);
+    void load_model_hyper_params(std::ifstream &fin, int n_ctx);
     // load model's vocab
     void load_model_vocab(std::ifstream &fin, gpt_vocab& vocab);
     // build model ctx unit according to data type.
-    bool build_model_ctx(ggml_type wtype, int n_ff, int n_part);
+    bool build_model_ctx();
     // determine ggml type based on hyperparams.
-    ggml_type determine_ggml_wtype();
+    void determine_ggml_wtype();
+    void determine_ggml_file_split(std::string& name);
 };
 
 
