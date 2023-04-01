@@ -117,9 +117,11 @@ public:
 
     // load the model's weights from a file
     bool load_model(const std::string & fname, gpt_vocab & vocab, int n_ctx);
-    bool eval_model(const int n_threads, const int n_past, const std::vector<gpt_vocab::id> &embd_inp, std::vector<float>         & embd_w,
-                    size_t                     & mem_per_token);
+    bool eval_model(const int n_threads, const int n_past, const std::vector<gpt_vocab::id> &embd_inp, std::vector<float> & embd_w, size_t& mem_per_token);
 private:
+    /**
+     * Model loading part
+     */
     // checking if file magic number matched.
     bool verify_model_magic(std::ifstream& fin);
     // verify tensor shape and dimension.
@@ -140,6 +142,12 @@ private:
     // determine ggml type based on hyperparams.
     void determine_ggml_wtype();
     void determine_ggml_file_split(std::string& name);
+
+    /**
+     * Evaluation part
+     */
+     ggml_tensor* eval_self_attention(ggml_cgraph* gf, ggml_context *ctx0, ggml_tensor *cur, int il, int n_past, int N);
+     ggml_tensor* eval_norm(ggml_context *ctx0, ggml_tensor* cur, ggml_tensor* norm);
 };
 
 

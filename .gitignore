@@ -31,4 +31,7 @@ cmake-build-debug/**
 cmake-build-release/**
 cmake-build-release-system/**
 
+CMakeCache.txt
+cmake_install.cmake
+
 *.a
