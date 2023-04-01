@@ -25,3 +25,10 @@ compile_commands.json
 
 .envrc
 .direnv/
+
+cmake-build-debug-system/**
+cmake-build-debug/**
+cmake-build-release/**
+cmake-build-release-system/**
+
+*.a
