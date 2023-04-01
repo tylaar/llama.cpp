@@ -146,8 +146,8 @@ private:
     /**
      * Evaluation part
      */
-     ggml_tensor* eval_self_attention(ggml_cgraph* gf, ggml_context *ctx0, ggml_tensor *cur, int il, int n_past, int N);
-     ggml_tensor* eval_norm(ggml_context *ctx0, ggml_tensor* cur, ggml_tensor* norm);
+     inline ggml_tensor* eval_self_attention(ggml_cgraph* gf, ggml_context *ctx0, ggml_tensor *cur, int il, int n_past, int N);
+     inline ggml_tensor* eval_norm(ggml_context *ctx0, ggml_tensor* cur, ggml_tensor* norm);
 };
 
 

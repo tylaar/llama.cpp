@@ -572,16 +572,8 @@ bool llama_model::eval_model(
 
         struct ggml_tensor *cur;
         // norm
-        {
-            cur = eval_norm(ctx0, inpL, layers[il].attention_norm);
-            /*cur = ggml_rms_norm(ctx0, inpL);
 
-            // cur = attention_norm*cur
-            cur = ggml_mul(ctx0,
-                           ggml_repeat(ctx0, layers[il].attention_norm, cur),
-                           cur);*/
-        }
-
+        cur = eval_norm(ctx0, inpL, layers[il].attention_norm);
         cur = eval_self_attention(&gf, ctx0, cur, il, n_past, N);
 
         struct ggml_tensor *inpFF = ggml_add(ctx0, cur, inpSA);
@@ -589,21 +581,16 @@ bool llama_model::eval_model(
         // feed-forward network
         {
             // norm
-            {
-                cur = eval_norm(ctx0, inpFF, layers[il].ffn_norm);
-            }
+            cur = eval_norm(ctx0, inpFF, layers[il].ffn_norm);
 
             struct ggml_tensor *tmp = ggml_mul_mat(ctx0, layers[il].w3,
                                                    cur);
-
 
             cur = ggml_mul_mat(ctx0, layers[il].w1, cur);
 
             // SILU activation
             cur = ggml_silu(ctx0, cur);
-
             cur = ggml_mul(ctx0, cur, tmp);
-
             cur = ggml_mul_mat(ctx0, layers[il].w2, cur);
         }
 
@@ -614,9 +601,8 @@ bool llama_model::eval_model(
     }
 
     // norm
-    {
-        inpL = eval_norm(ctx0, inpL, norm);
-    }
+
+    inpL = eval_norm(ctx0, inpL, norm);
 
     // lm_head
     {
