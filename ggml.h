@@ -260,9 +260,9 @@ struct ggml_tensor {
     int    n_dims;
     int    ne[GGML_MAX_DIMS]; // number of elements
     size_t nb[GGML_MAX_DIMS]; // stride in bytes:
-                              // nb[0] = sizeof(type)
-                              // nb[1] = nb[0]   * ne[0] + padding
-                              // nb[i] = nb[i-1] * ne[i-1]
+    // nb[0] = sizeof(type)
+    // nb[1] = nb[0]   * ne[0] + padding
+    // nb[i] = nb[i-1] * ne[i-1]
 
     // compute data
     enum ggml_op op;
@@ -316,6 +316,7 @@ struct ggml_init_params {
     // memory pool
     size_t mem_size;   // bytes
     void * mem_buffer; // if NULL, memory will be allocated internally
+    bool   no_alloc;   // don't allocate memory for the tensor data
 };
 
 void    ggml_time_init(void); // call this once at the beginning of the program
@@ -342,6 +343,13 @@ void ggml_free(struct ggml_context * ctx);
 size_t ggml_used_mem(const struct ggml_context * ctx);
 
 size_t ggml_set_scratch(struct ggml_context * ctx, struct ggml_scratch scratch);
+
+bool ggml_mlock_supported(void);
+bool ggml_mlock(
+        struct ggml_context * ctx,
+        const void *opt_extra_addr,
+        size_t opt_extra_len,
+        char **err_p);
 
 struct ggml_tensor * ggml_new_tensor(
         struct ggml_context * ctx,
@@ -391,7 +399,7 @@ void    ggml_set_i32_1d(const struct ggml_tensor * tensor, int i, int32_t value)
 float ggml_get_f32_1d(const struct ggml_tensor * tensor, int i);
 void  ggml_set_f32_1d(const struct ggml_tensor * tensor, int i, float value);
 
- void * ggml_get_data    (const struct ggml_tensor * tensor);
+void * ggml_get_data    (const struct ggml_tensor * tensor);
 float * ggml_get_data_f32(const struct ggml_tensor * tensor);
 
 //
@@ -740,6 +748,13 @@ enum ggml_opt_result ggml_opt(
         struct ggml_context * ctx,
         struct ggml_opt_params params,
         struct ggml_tensor * f);
+
+//
+// quantization
+//
+
+size_t ggml_quantize_q4_0(const float * src, void * dst, int n, int k, int64_t * hist);
+size_t ggml_quantize_q4_1(const float * src, void * dst, int n, int k, int64_t * hist);
 
 //
 // system info
