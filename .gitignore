@@ -3,6 +3,7 @@
 .cache/
 .vs/
 .vscode/
+.idea/
 .DS_Store
 
 build/
@@ -19,6 +20,7 @@ models/*
 /main
 /quantize
 /result
+/llama
 
 arm_neon.h
 compile_commands.json
@@ -33,5 +35,8 @@ cmake-build-release-system/**
 
 CMakeCache.txt
 cmake_install.cmake
+.cmake/
+CMakeFiles/
 
 *.a
+*.bin
