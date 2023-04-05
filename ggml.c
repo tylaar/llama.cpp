@@ -2557,7 +2557,7 @@ static const int GGML_BLCK_SIZE[GGML_TYPE_COUNT] = {
         1,
 };
 
-static_assert(GGML_TYPE_COUNT == 7, "GGML_TYPE_COUNT != 5");
+static_assert(GGML_TYPE_COUNT == 7, "GGML_TYPE_COUNT != 8");
 
 static const size_t GGML_TYPE_SIZE[GGML_TYPE_COUNT] = {
         sizeof(block_q4_0),
@@ -2570,7 +2570,7 @@ static const size_t GGML_TYPE_SIZE[GGML_TYPE_COUNT] = {
 };
 
 // don't forget to update the array above when adding new types
-static_assert(GGML_TYPE_COUNT == 7, "GGML_TYPE_COUNT != 5");
+static_assert(GGML_TYPE_COUNT == 7, "GGML_TYPE_COUNT != 8");
 
 static const char * GGML_OP_LABEL[GGML_OP_COUNT] = {
         "NONE",

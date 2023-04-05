@@ -16,7 +16,6 @@
 #include <string>
 #include <iostream>
 #include <vector>
-#include <fmt/core.h>
 #include <queue>
 
 #define SPLIT_TYPE_COLUMN 0
@@ -180,21 +179,6 @@ public:
     struct ggml_tensor * w2;
     struct ggml_tensor * w3;
 
-    std::string ggml_tensor_shape(const ggml_tensor *t) const {
-        return fmt::format("{}, {}, {}, {}", t->ne[0],
-                           t->ne[1],
-                           t->ne[2],
-                           t->ne[3]);
-    }
-
-    void llama_layer_debug() const {
-        std::cout << "layer tensor num attetion : " << ggml_tensor_shape(this->attention_norm)
-                  << " Q:" << ggml_tensor_shape(this->wq)
-                  << " K: " << ggml_tensor_shape(this->wk)
-                  << " V:" << ggml_tensor_shape(this->wv)
-                  << std::endl;
-    }
-
 };
 
 /*
@@ -324,7 +308,14 @@ private:
          * Model loading part
          */
     // checking if file magic number matched.
-    bool verify_model_magic(std::ifstream& fin);
+    static bool verify_model_magic(std::ifstream& fin, std::string const& fname);
+    // load hparams for model metadata purpose.
+    static int load_model_hyper_params(std::ifstream &fin, llama_context& ctx, int n_ctx, int n_parts);
+    // load model's vocab
+    static void load_model_vocab(std::ifstream &fin, llama_context& ctx);
+    // determine ggml type based on hyperparams.
+    static std::pair<ggml_type, ggml_type> determine_ggml_type(llama_context& ctx);
+
     // verify tensor shape and dimension.
     bool verify_tensor_shape_and_dim(ggml_tensor* tensor, std::string& name, int n_parts, int n_dims, int nelements, int ne[]);
 
@@ -333,15 +324,11 @@ private:
     bool verify_tensor_shape_by_column(ggml_tensor *tensor, std::string& name, int n_parts, int nelements, int ne[]);
     // verify tensor shape in row mode
     bool verify_tensor_shape_by_row(ggml_tensor *tensor, std::string& name, int n_parts, int nelements, int ne[]);
-    // load hparams for model metadata purpose.
-    void load_model_hyper_params(std::ifstream &fin, int n_ctx);
-    // load model's vocab
-    void load_model_vocab(std::ifstream &fin, gpt_vocab& vocab);
+
     int load_model_tensor(std::ifstream &fin, int part_id);
     // build model ctx unit according to data type.
     bool build_model_ctx();
-    // determine ggml type based on hyperparams.
-    void determine_ggml_wtype();
+
     void determine_ggml_file_split(std::string& name);
 
     bool eval_internal(const llama_token * tokens,

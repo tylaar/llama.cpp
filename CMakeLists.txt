@@ -112,16 +112,16 @@ add_executable(llama
         main.cpp
         utils.cpp
         llama.cpp
-        utils.h)
+        utils.h llama_load.cpp llama_eval.cpp)
 
 add_executable(quantize
     quantize.cpp
     utils.cpp
-    utils.h)
+    utils.h llama_load.cpp)
 
 add_library(ggml
         ggml.c
-        ggml.h)
+        ggml.h llama_load.cpp)
 
 target_compile_definitions(ggml PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_compile_definitions(llama PUBLIC ${LLAMA_EXTRA_FLAGS})
