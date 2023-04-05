@@ -15,6 +15,7 @@
 //
 
 #include "llama.h"
+#include "llama_context.h"
 
 int llama_model::eval(
         const llama_token *tokens,

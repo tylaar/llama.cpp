@@ -20,6 +20,7 @@
 #include <fmt/core.h>
 #include <string>
 #include "llama.h"
+#include "llama_context.h"
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"

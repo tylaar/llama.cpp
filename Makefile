@@ -203,6 +203,30 @@ llama.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama.cpp.s
 .PHONY : llama.cpp.s
 
+llama_context.o: llama_context.cpp.o
+.PHONY : llama_context.o
+
+# target to build an object file
+llama_context.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_context.cpp.o
+.PHONY : llama_context.cpp.o
+
+llama_context.i: llama_context.cpp.i
+.PHONY : llama_context.i
+
+# target to preprocess a source file
+llama_context.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_context.cpp.i
+.PHONY : llama_context.cpp.i
+
+llama_context.s: llama_context.cpp.s
+.PHONY : llama_context.s
+
+# target to generate assembly for a file
+llama_context.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_context.cpp.s
+.PHONY : llama_context.cpp.s
+
 llama_eval.o: llama_eval.cpp.o
 .PHONY : llama_eval.o
 
@@ -349,6 +373,9 @@ help:
 	@echo "... llama.o"
 	@echo "... llama.i"
 	@echo "... llama.s"
+	@echo "... llama_context.o"
+	@echo "... llama_context.i"
+	@echo "... llama_context.s"
 	@echo "... llama_eval.o"
 	@echo "... llama_eval.i"
 	@echo "... llama_eval.s"

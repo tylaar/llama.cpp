@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <fmt/core.h>
 #include "llama.h"
+#include "llama_context.h"
 
 
 static void *mmap_file(const char *fname, uint64_t *mm_length) {

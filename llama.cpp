@@ -3,6 +3,7 @@
 //
 
 #include "llama.h"
+#include "llama_context.h"
 #include <fmt/core.h>
 #include <fstream>
 bool llama_model::build_ggml_ctx() {
@@ -95,7 +96,7 @@ void llama_model::determine_ggml_file_split(std::string &name) {
 
 
 llama_context *llama_model::init_from_file(const std::string &path_model, llama_context_params &params) {
-    llama_context *ctx = new llama_context;
+    llama_context *ctx = new llama_context();
 
     if (params.seed <= 0) {
         params.seed = time(NULL);
