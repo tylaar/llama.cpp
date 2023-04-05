@@ -305,6 +305,30 @@ llama_loader.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_loader.cpp.s
 .PHONY : llama_loader.cpp.s
 
+llama_memory_mapper.o: llama_memory_mapper.cpp.o
+.PHONY : llama_memory_mapper.o
+
+# target to build an object file
+llama_memory_mapper.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_memory_mapper.cpp.o
+.PHONY : llama_memory_mapper.cpp.o
+
+llama_memory_mapper.i: llama_memory_mapper.cpp.i
+.PHONY : llama_memory_mapper.i
+
+# target to preprocess a source file
+llama_memory_mapper.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_memory_mapper.cpp.i
+.PHONY : llama_memory_mapper.cpp.i
+
+llama_memory_mapper.s: llama_memory_mapper.cpp.s
+.PHONY : llama_memory_mapper.s
+
+# target to generate assembly for a file
+llama_memory_mapper.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_memory_mapper.cpp.s
+.PHONY : llama_memory_mapper.cpp.s
+
 main.o: main.cpp.o
 .PHONY : main.o
 
@@ -409,6 +433,9 @@ help:
 	@echo "... llama_loader.o"
 	@echo "... llama_loader.i"
 	@echo "... llama_loader.s"
+	@echo "... llama_memory_mapper.o"
+	@echo "... llama_memory_mapper.i"
+	@echo "... llama_memory_mapper.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"

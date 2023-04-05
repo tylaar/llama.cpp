@@ -4,14 +4,11 @@
 
 #include <iostream>
 #include <fstream>
-#include <sys/mman.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <fmt/core.h>
 #include "llama.h"
 #include "llama_context.h"
 #include "llama_loader.h"
-
+#include "llama_memory_mapper.h"
 
 bool llama_model::verify_tensor_one_dimension(ggml_tensor *tensor, std::string &name, int nelements, int ne[]) {
     if (ggml_nelements(tensor) != nelements) {
@@ -131,14 +128,7 @@ bool llama_model::load_model(const std::string &fname,
     }
 
     // map model into memory
-    char *mm_addr = NULL;
-    model.mm_addr = mmap_file(fname.c_str(), &model.mm_length);
-    if (model.mm_addr == NULL) {
-        fprintf(stderr, "%s: failed to mmap '%s'\n", __func__, fname.c_str());
-        return false;
-    }
-    mm_addr = (char *) model.mm_addr;
-    fprintf(stderr, "%s: ggml map size = %6.2f MB\n", __func__, model.mm_length / (1024.0 * 1024.0));
+    loader->mmap_memory();
 
     // calculate ctx size.
     size_t ctx_size = loader->calculate_ctx_size();
@@ -171,7 +161,7 @@ bool llama_model::load_model(const std::string &fname,
     // load weights
     size_t total_size = 0;
     try {
-        total_size = loader->load_layer_weight(mm_addr);
+        total_size = loader->load_layer_weight();
     } catch (const std::invalid_argument& e) {
         std::cerr << e.what() << std::endl;
         fin.close();
@@ -197,7 +187,7 @@ bool llama_model::load_model(const std::string &fname,
 }
 
 
-void llama_model::llama_free(struct llama_context *ctx) {
+void llama_model::llama_free(llama_context *ctx) {
     ctx->model.kv_self.kv_cache_free();
 
     if (ctx->model.ctx) {
@@ -205,7 +195,7 @@ void llama_model::llama_free(struct llama_context *ctx) {
     }
 
     if (ctx->model.mm_addr) {
-        munmap_file(ctx->model.mm_addr, ctx->model.mm_length);
+        llama_memory_mapper::munmap_file(ctx->model.mm_addr, ctx->model.mm_length);
     }
 
     delete ctx;

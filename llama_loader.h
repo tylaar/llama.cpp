@@ -26,7 +26,8 @@ public:
     void load_model_vocab();
     void prepare_layer_memory(int n_ff);
     void determine_ggml_type();
-    size_t load_layer_weight(char* mm_addr);
+    void mmap_memory();
+    size_t load_layer_weight();
 };
 
 

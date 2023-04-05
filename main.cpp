@@ -101,7 +101,7 @@ static std::vector<llama_vocab::id> llama_tokenize(const llama_vocab & vocab, co
 }
 
 int llama_tokenize(
-        struct llama_context * ctx,
+        llama_context * ctx,
         const char * text,
         llama_token * tokens,
         int   n_max_tokens,

@@ -254,7 +254,7 @@ public:
 };
 
 
-struct llama_context;
+class llama_context;
 
 class llama_model {
 public:
@@ -301,7 +301,7 @@ public:
 
     int eval(const llama_token *tokens, int n_tokens, int n_past, int n_threads);
 
-    static void llama_free(struct llama_context * ctx);
+    static void llama_free(llama_context * ctx);
 private:
 
         /**

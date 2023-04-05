@@ -8,6 +8,7 @@
 #include "llama.h"
 #include "llama_context.h"
 #include "llama_loader.h"
+#include "llama_memory_mapper.h"
 
 
 bool llama_loader::verify_model_magic() {
@@ -43,6 +44,14 @@ bool llama_loader::verify_model_magic() {
     return true;
 }
 
+void llama_loader::mmap_memory() {
+    mm_addr = (char *) llama_memory_mapper::mmap_file(fname.c_str(), &model.mm_length);
+    if (mm_addr == NULL) {
+        throw std::invalid_argument(fmt::format("%s: failed to mmap '%s'\n", __func__, fname.c_str()));
+    }
+    model.mm_addr = mm_addr;
+    std::cout << __func__  << fmt::format(" ggml map size = %6.2f MB\n", model.mm_length / (1024.0 * 1024.0));
+}
 
 int llama_loader::load_model_hyper_params(int n_ctx, int n_parts) {
     //auto &vocab = ctx.vocab;
@@ -248,7 +257,7 @@ void llama_loader::prepare_layer_memory(int n_ff) {
     }
 }
 
-size_t llama_loader::load_layer_weight(char* mm_addr) {
+size_t llama_loader::load_layer_weight() {
     size_t total_size = 0;
     model.n_loaded = 0;
 
