@@ -343,6 +343,9 @@ private:
 
     static void print_memory_loaded(llama_context &ctx, ggml_type memory_type, size_t ctx_size);
     static size_t calculate_ctx_size(llama_context& ctx);
+
+    static void prepare_layer_memory(llama_context &ctx, ggml_type wtype, ggml_type vtype, int n_ff);
+    static size_t load_layer_weight(llama_context& ctx, std::ifstream& fin, char* mm_addr);
 };
 
 class llama_context {

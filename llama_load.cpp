@@ -8,9 +8,8 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <fcntl.h>
-
+#include <fmt/core.h>
 #include "llama.h"
-
 
 
 static void *mmap_file(const char *fname, uint64_t *mm_length) {
@@ -351,8 +350,9 @@ bool llama_model::load_model(const std::string &fname,
     std::pair<ggml_type, ggml_type> types;
     try {
         types = determine_ggml_type(ctx);
-    } catch (std::invalid_argument e) {
+    } catch (const std::invalid_argument& e) {
         std::cerr << e.what() << std::endl;
+        fin.close();
         return false;
     }
 
@@ -392,147 +392,33 @@ bool llama_model::load_model(const std::string &fname,
         }
     }
 
-    // prepare memory for the weights
-    {
-        const auto &hparams = model.hparams;
+    prepare_layer_memory(ctx, wtype, vtype, n_ff);
 
-        const int n_embd = hparams.n_embd;
-        const int n_layer = hparams.n_layer;
-        const int n_vocab = hparams.n_vocab;
+    //std::vector<uint8_t> tmp;
 
-        model.layers.resize(n_layer);
-
-        model.tok_embeddings = ggml_new_tensor_2d(model.ctx, vtype, n_embd, n_vocab);
-
-        model.norm = ggml_new_tensor_1d(model.ctx, GGML_TYPE_F32, n_embd);
-        model.output = ggml_new_tensor_2d(model.ctx, vtype, n_embd, n_vocab);
-
-        // map by name
-        model.tensors["tok_embeddings.weight"] = model.tok_embeddings;
-
-        model.tensors["norm.weight"] = model.norm;
-        model.tensors["output.weight"] = model.output;
-
-        for (int i = 0; i < n_layer; ++i) {
-            auto &layer = model.layers[i];
-
-            layer.attention_norm = ggml_new_tensor_1d(model.ctx, GGML_TYPE_F32, n_embd);
-
-            layer.wq = ggml_new_tensor_2d(model.ctx, wtype, n_embd, n_embd);
-            layer.wk = ggml_new_tensor_2d(model.ctx, wtype, n_embd, n_embd);
-            layer.wv = ggml_new_tensor_2d(model.ctx, wtype, n_embd, n_embd);
-            layer.wo = ggml_new_tensor_2d(model.ctx, wtype, n_embd, n_embd);
-
-            layer.ffn_norm = ggml_new_tensor_1d(model.ctx, GGML_TYPE_F32, n_embd);
-
-            layer.w1 = ggml_new_tensor_2d(model.ctx, wtype, n_embd, n_ff);
-            layer.w2 = ggml_new_tensor_2d(model.ctx, wtype, n_ff, n_embd);
-            layer.w3 = ggml_new_tensor_2d(model.ctx, wtype, n_embd, n_ff);
-
-            // map by name
-            model.tensors["layers." + std::to_string(i) + ".attention_norm.weight"] = layer.attention_norm;
-
-            model.tensors["layers." + std::to_string(i) + ".attention.wq.weight"] = layer.wq;
-            model.tensors["layers." + std::to_string(i) + ".attention.wk.weight"] = layer.wk;
-            model.tensors["layers." + std::to_string(i) + ".attention.wv.weight"] = layer.wv;
-            model.tensors["layers." + std::to_string(i) + ".attention.wo.weight"] = layer.wo;
-
-            model.tensors["layers." + std::to_string(i) + ".ffn_norm.weight"] = layer.ffn_norm;
-
-            model.tensors["layers." + std::to_string(i) + ".feed_forward.w1.weight"] = layer.w1;
-            model.tensors["layers." + std::to_string(i) + ".feed_forward.w2.weight"] = layer.w2;
-            model.tensors["layers." + std::to_string(i) + ".feed_forward.w3.weight"] = layer.w3;
-        }
-    }
-
-    std::vector<uint8_t> tmp;
-
-    fprintf(stderr, "%s: loading tensors from '%s'\n", __func__, fname.c_str());
+    std::cerr << __func__  << " loading tensors from " << fname.c_str() << std::endl;
 
     // load weights
-    {
-        size_t total_size = 0;
-        model.n_loaded = 0;
-
-        while (true) {
-            int32_t n_dims;
-            int32_t length;
-            int32_t ftype;
-
-            fin.read(reinterpret_cast<char *>(&n_dims), sizeof(n_dims));
-            fin.read(reinterpret_cast<char *>(&length), sizeof(length));
-            fin.read(reinterpret_cast<char *>(&ftype), sizeof(ftype));
-
-            if (fin.eof()) {
-                break;
-            }
-
-            int32_t nelements = 1;
-            int32_t ne[2] = {1, 1};
-            for (int i = 0; i < n_dims; ++i) {
-                fin.read(reinterpret_cast<char *>(&ne[i]), sizeof(ne[i]));
-                nelements *= ne[i];
-            }
-
-            std::string name(length, 0);
-            fin.read(&name[0], length);
-
-            if (model.tensors.find(name.data()) == model.tensors.end()) {
-                fprintf(stderr, "%s: unknown tensor '%s' in model file\n", __func__, name.data());
-                return false;
-            }
-
-            auto tensor = model.tensors[name.data()];
-
-            if (ggml_nelements(tensor) != nelements) {
-                fprintf(stderr, "%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
-                return false;
-            }
-            if (tensor->ne[0] != ne[0] || tensor->ne[1] != ne[1]) {
-                fprintf(stderr, "%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
-                        __func__, name.data(), tensor->ne[0], tensor->ne[1], ne[0], ne[1]);
-                return false;
-            }
-            if (0) {
-                static const char *ftype_str[] = {"f32", "f16", "q4_0", "q4_1",};
-                fprintf(stderr, "%24s - [%5d, %5d], type = %6s\n", name.data(), ne[0], ne[1], ftype_str[ftype]);
-            }
-
-            switch (ftype) {
-                case 0:  // f32
-                case 1:  // f16
-                    break;
-                case 2:  // q4_0
-                case 3:  // q4_1
-                    assert(ne[0] % 64 == 0);
-                    break;
-                default:
-                    fprintf(stderr, "%s: unknown ftype %d in model file\n", __func__, ftype);
-                    return false;
-            };
-
-            // load the tensor data into memory without copying or reading it
-            size_t offset = fin.tellg();
-            size_t tensor_data_size = ggml_nbytes(tensor);
-            offset = (offset + 31) & -32;
-            tensor->data = mm_addr + offset;
-            fin.seekg(offset + tensor_data_size);
-            total_size += tensor_data_size;
-            model.n_loaded++;
-
-        }
-
+    size_t total_size = 0;
+    try {
+        total_size = load_layer_weight(ctx, fin, mm_addr);
+    } catch (const std::invalid_argument& e) {
+        std::cerr << e.what() << std::endl;
         fin.close();
-
-        fprintf(stderr, "%s: model size = %8.2f MB / num tensors = %d\n", __func__, total_size / 1024.0 / 1024.0, model.n_loaded);
-        if (model.n_loaded == 0) {
-            fprintf(stderr, "%s: WARN no tensors loaded from model file - assuming empty model for testing\n", __func__);
-        } else if (model.n_loaded != (int) model.tensors.size()) {
-            fprintf(stderr, "%s: ERROR not all tensors loaded from model file - expected %zu, got %d\n", __func__, model.tensors.size(),
-                    model.n_loaded);
-            return false;
-        }
+        return false;
     }
+
+    fin.close();
+
+    fprintf(stderr, "%s: model size = %8.2f MB / num tensors = %d\n", __func__, total_size / 1024.0 / 1024.0, model.n_loaded);
+    if (model.n_loaded == 0) {
+        fprintf(stderr, "%s: WARN no tensors loaded from model file - assuming empty model for testing\n", __func__);
+    } else if (model.n_loaded != (int) model.tensors.size()) {
+        fprintf(stderr, "%s: ERROR not all tensors loaded from model file - expected %zu, got %d\n", __func__, model.tensors.size(),
+                model.n_loaded);
+        return false;
+    }
+
 
     // loading time will be recalculate after the first eval, so
     // we take page faults deferred by mmap() into consideration
@@ -556,3 +442,129 @@ void llama_model::llama_free(struct llama_context *ctx) {
     delete ctx;
 }
 
+void llama_model::prepare_layer_memory(llama_context &ctx, ggml_type wtype, ggml_type vtype, int n_ff) {
+    auto &model = ctx.model;
+    // prepare memory for the weights
+
+    const auto &hparams = model.hparams;
+
+    const int n_embd = hparams.n_embd;
+    const int n_layer = hparams.n_layer;
+    const int n_vocab = hparams.n_vocab;
+
+    model.layers.resize(n_layer);
+
+    model.tok_embeddings = ggml_new_tensor_2d(model.ctx, vtype, n_embd, n_vocab);
+
+    model.norm = ggml_new_tensor_1d(model.ctx, GGML_TYPE_F32, n_embd);
+    model.output = ggml_new_tensor_2d(model.ctx, vtype, n_embd, n_vocab);
+
+    // map by name
+    model.tensors["tok_embeddings.weight"] = model.tok_embeddings;
+
+    model.tensors["norm.weight"] = model.norm;
+    model.tensors["output.weight"] = model.output;
+
+    for (int i = 0; i < n_layer; ++i) {
+        auto &layer = model.layers[i];
+
+        layer.attention_norm = ggml_new_tensor_1d(model.ctx, GGML_TYPE_F32, n_embd);
+
+        layer.wq = ggml_new_tensor_2d(model.ctx, wtype, n_embd, n_embd);
+        layer.wk = ggml_new_tensor_2d(model.ctx, wtype, n_embd, n_embd);
+        layer.wv = ggml_new_tensor_2d(model.ctx, wtype, n_embd, n_embd);
+        layer.wo = ggml_new_tensor_2d(model.ctx, wtype, n_embd, n_embd);
+
+        layer.ffn_norm = ggml_new_tensor_1d(model.ctx, GGML_TYPE_F32, n_embd);
+
+        layer.w1 = ggml_new_tensor_2d(model.ctx, wtype, n_embd, n_ff);
+        layer.w2 = ggml_new_tensor_2d(model.ctx, wtype, n_ff, n_embd);
+        layer.w3 = ggml_new_tensor_2d(model.ctx, wtype, n_embd, n_ff);
+
+        // map by name
+        model.tensors["layers." + std::to_string(i) + ".attention_norm.weight"] = layer.attention_norm;
+
+        model.tensors["layers." + std::to_string(i) + ".attention.wq.weight"] = layer.wq;
+        model.tensors["layers." + std::to_string(i) + ".attention.wk.weight"] = layer.wk;
+        model.tensors["layers." + std::to_string(i) + ".attention.wv.weight"] = layer.wv;
+        model.tensors["layers." + std::to_string(i) + ".attention.wo.weight"] = layer.wo;
+
+        model.tensors["layers." + std::to_string(i) + ".ffn_norm.weight"] = layer.ffn_norm;
+
+        model.tensors["layers." + std::to_string(i) + ".feed_forward.w1.weight"] = layer.w1;
+        model.tensors["layers." + std::to_string(i) + ".feed_forward.w2.weight"] = layer.w2;
+        model.tensors["layers." + std::to_string(i) + ".feed_forward.w3.weight"] = layer.w3;
+    }
+}
+
+size_t llama_model::load_layer_weight(llama_context& ctx, std::ifstream& fin, char* mm_addr) {
+    auto& model = ctx.model;
+    size_t total_size = 0;
+    model.n_loaded = 0;
+
+    while (true) {
+        int32_t n_dims;
+        int32_t length;
+        int32_t ftype;
+
+        fin.read(reinterpret_cast<char *>(&n_dims), sizeof(n_dims));
+        fin.read(reinterpret_cast<char *>(&length), sizeof(length));
+        fin.read(reinterpret_cast<char *>(&ftype), sizeof(ftype));
+
+        if (fin.eof()) {
+            break;
+        }
+
+        int32_t nelements = 1;
+        int32_t ne[2] = {1, 1};
+        for (int i = 0; i < n_dims; ++i) {
+            fin.read(reinterpret_cast<char *>(&ne[i]), sizeof(ne[i]));
+            nelements *= ne[i];
+        }
+
+        std::string name(length, 0);
+        fin.read(&name[0], length);
+
+        if (model.tensors.find(name.data()) == model.tensors.end()) {
+            throw std::invalid_argument(fmt::format("%s: unknown tensor '%s' in model file", __func__, name.data()));
+        }
+
+        auto tensor = model.tensors[name.data()];
+
+        if (ggml_nelements(tensor) != nelements) {
+            throw std::invalid_argument(fmt::format("%s: tensor '%s' has wrong size in model file", __func__, name.data()));
+        }
+        if (tensor->ne[0] != ne[0] || tensor->ne[1] != ne[1]) {
+            throw std::invalid_argument(fmt::format("%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
+                    __func__, name.data(), tensor->ne[0], tensor->ne[1], ne[0], ne[1]));
+        }
+        if (0) {
+            static const char *ftype_str[] = {"f32", "f16", "q4_0", "q4_1",};
+            fprintf(stderr, "%24s - [%5d, %5d], type = %6s\n", name.data(), ne[0], ne[1], ftype_str[ftype]);
+        }
+
+        switch (ftype) {
+            case 0:  // f32
+            case 1:  // f16
+                break;
+            case 2:  // q4_0
+            case 3:  // q4_1
+                assert(ne[0] % 64 == 0);
+                break;
+            default:
+                fprintf(stderr, "%s: unknown ftype %d in model file\n", __func__, ftype);
+                return false;
+        };
+
+        // load the tensor data into memory without copying or reading it
+        size_t offset = fin.tellg();
+        size_t tensor_data_size = ggml_nbytes(tensor);
+        offset = (offset + 31) & -32;
+        tensor->data = mm_addr + offset;
+        fin.seekg(offset + tensor_data_size);
+        total_size += tensor_data_size;
+        model.n_loaded++;
+
+    }
+    return total_size;
+}
