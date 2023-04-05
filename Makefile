@@ -281,6 +281,30 @@ llama_load.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/ggml.dir/build.make CMakeFiles/ggml.dir/llama_load.cpp.s
 .PHONY : llama_load.cpp.s
 
+llama_loader.o: llama_loader.cpp.o
+.PHONY : llama_loader.o
+
+# target to build an object file
+llama_loader.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_loader.cpp.o
+.PHONY : llama_loader.cpp.o
+
+llama_loader.i: llama_loader.cpp.i
+.PHONY : llama_loader.i
+
+# target to preprocess a source file
+llama_loader.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_loader.cpp.i
+.PHONY : llama_loader.cpp.i
+
+llama_loader.s: llama_loader.cpp.s
+.PHONY : llama_loader.s
+
+# target to generate assembly for a file
+llama_loader.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_loader.cpp.s
+.PHONY : llama_loader.cpp.s
+
 main.o: main.cpp.o
 .PHONY : main.o
 
@@ -382,6 +406,9 @@ help:
 	@echo "... llama_load.o"
 	@echo "... llama_load.i"
 	@echo "... llama_load.s"
+	@echo "... llama_loader.o"
+	@echo "... llama_loader.i"
+	@echo "... llama_loader.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"

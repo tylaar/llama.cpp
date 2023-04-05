@@ -9,7 +9,6 @@
 
 class llama_context {
 public:
-    //llama_context();
     std::mt19937 rng;
 
     int64_t t_load_us = 0;
@@ -67,8 +66,6 @@ public:
     llama_token llama_token_eos();
 
     void llama_print_timings();
-
-
 };
 
 

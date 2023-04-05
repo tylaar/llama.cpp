@@ -114,7 +114,7 @@ add_executable(llama
         main.cpp
         utils.cpp
         llama.cpp
-        utils.h llama_load.cpp llama_eval.cpp llama_context.cpp llama_context.h)
+        utils.h llama_load.cpp llama_eval.cpp llama_context.cpp llama_context.h llama_loader.cpp llama_loader.h llama_loader.h)
 
 add_executable(quantize
     quantize.cpp
