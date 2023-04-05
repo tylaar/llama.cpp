@@ -5,7 +5,7 @@
 #include "llama.h"
 #include <fmt/core.h>
 #include <fstream>
-bool llama_model::build_model_ctx() {
+bool llama_model::build_ggml_ctx() {
     //auto &ctx = this->ctx;
     size_t ctx_size = 0;
     {

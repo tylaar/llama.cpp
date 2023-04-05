@@ -327,7 +327,7 @@ private:
 
     int load_model_tensor(std::ifstream &fin, int part_id);
     // build model ctx unit according to data type.
-    bool build_model_ctx();
+    bool build_ggml_ctx();
 
     void determine_ggml_file_split(std::string& name);
 
@@ -338,9 +338,11 @@ private:
     /**
      * Evaluation part
      */
-     inline ggml_tensor* eval_self_attention(ggml_cgraph* gf, ggml_context *ctx0, ggml_tensor *cur, int il, int n_past, int N);
-     inline ggml_tensor* eval_norm(ggml_context *ctx0, ggml_tensor* cur, ggml_tensor* norm);
+    inline ggml_tensor* eval_self_attention(ggml_cgraph* gf, ggml_context *ctx0, ggml_tensor *cur, int il, int n_past, int N);
+    inline ggml_tensor* eval_norm(ggml_context *ctx0, ggml_tensor* cur, ggml_tensor* norm);
 
+    static void print_memory_loaded(llama_context &ctx, ggml_type memory_type, size_t ctx_size);
+    static size_t calculate_ctx_size(llama_context& ctx);
 };
 
 class llama_context {

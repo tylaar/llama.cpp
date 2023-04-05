@@ -203,6 +203,60 @@ llama.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama.cpp.s
 .PHONY : llama.cpp.s
 
+llama_eval.o: llama_eval.cpp.o
+.PHONY : llama_eval.o
+
+# target to build an object file
+llama_eval.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_eval.cpp.o
+.PHONY : llama_eval.cpp.o
+
+llama_eval.i: llama_eval.cpp.i
+.PHONY : llama_eval.i
+
+# target to preprocess a source file
+llama_eval.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_eval.cpp.i
+.PHONY : llama_eval.cpp.i
+
+llama_eval.s: llama_eval.cpp.s
+.PHONY : llama_eval.s
+
+# target to generate assembly for a file
+llama_eval.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_eval.cpp.s
+.PHONY : llama_eval.cpp.s
+
+llama_load.o: llama_load.cpp.o
+.PHONY : llama_load.o
+
+# target to build an object file
+llama_load.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_load.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/quantize.dir/build.make CMakeFiles/quantize.dir/llama_load.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ggml.dir/build.make CMakeFiles/ggml.dir/llama_load.cpp.o
+.PHONY : llama_load.cpp.o
+
+llama_load.i: llama_load.cpp.i
+.PHONY : llama_load.i
+
+# target to preprocess a source file
+llama_load.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_load.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/quantize.dir/build.make CMakeFiles/quantize.dir/llama_load.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ggml.dir/build.make CMakeFiles/ggml.dir/llama_load.cpp.i
+.PHONY : llama_load.cpp.i
+
+llama_load.s: llama_load.cpp.s
+.PHONY : llama_load.s
+
+# target to generate assembly for a file
+llama_load.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_load.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/quantize.dir/build.make CMakeFiles/quantize.dir/llama_load.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ggml.dir/build.make CMakeFiles/ggml.dir/llama_load.cpp.s
+.PHONY : llama_load.cpp.s
+
 main.o: main.cpp.o
 .PHONY : main.o
 
@@ -295,6 +349,12 @@ help:
 	@echo "... llama.o"
 	@echo "... llama.i"
 	@echo "... llama.s"
+	@echo "... llama_eval.o"
+	@echo "... llama_eval.i"
+	@echo "... llama_eval.s"
+	@echo "... llama_load.o"
+	@echo "... llama_load.i"
+	@echo "... llama_load.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"

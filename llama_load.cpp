@@ -150,6 +150,34 @@ int llama_model::load_model_hyper_params(std::ifstream &fin, llama_context& ctx,
     return n_ff;
 }
 
+size_t llama_model::calculate_ctx_size(llama_context& ctx) {
+    size_t ctx_size = 0;
+    const auto &hparams = ctx.model.hparams;
+    const int n_layer = hparams.n_layer;
+    ctx_size += (5 + 10 * n_layer) * 256; // object overhead
+    fprintf(stderr, "%s: ggml ctx size = %6.2f KB\n", __func__, ctx_size / 1024.0);
+    return ctx_size;
+}
+
+
+void llama_model::print_memory_loaded(llama_context& ctx, ggml_type memory_type, size_t ctx_size) {
+    const size_t scale = memory_type == GGML_TYPE_F32 ? 2 : 1;
+
+    // this is the total memory required to run the inference
+    const size_t mem_required =
+            ctx_size +
+            ctx.model.mm_length +
+            MEM_REQ_SCRATCH0.at(ctx.model.type) +
+            MEM_REQ_SCRATCH1.at(ctx.model.type) +
+            MEM_REQ_EVAL.at(ctx.model.type);
+
+    // this is the memory required by one llama_state
+    const size_t mem_required_state =
+            scale * MEM_REQ_KV_SELF.at(ctx.model.type);
+
+    fprintf(stderr, "%s: mem required  = %7.2f MB (+ %7.2f MB per state)\n", __func__,
+            mem_required / 1024.0 / 1024.0, mem_required_state / 1024.0 / 1024.0);
+}
 
 bool llama_model::verify_tensor_one_dimension(ggml_tensor *tensor, std::string &name, int nelements, int ne[]) {
     if (ggml_nelements(tensor) != nelements) {
@@ -341,33 +369,11 @@ bool llama_model::load_model(const std::string &fname,
     mm_addr = (char *) model.mm_addr;
     fprintf(stderr, "%s: ggml map size = %6.2f MB\n", __func__, model.mm_length / (1024.0 * 1024.0));
 
-    size_t ctx_size = 0;
-    {
-        const auto &hparams = model.hparams;
-        const int n_layer = hparams.n_layer;
-        ctx_size += (5 + 10 * n_layer) * 256; // object overhead
-        fprintf(stderr, "%s: ggml ctx size = %6.2f KB\n", __func__, ctx_size / 1024.0);
-    }
+    // calculate ctx size.
+    size_t ctx_size = calculate_ctx_size(ctx);
 
     // print memory requirements
-    {
-        const size_t scale = memory_type == GGML_TYPE_F32 ? 2 : 1;
-
-        // this is the total memory required to run the inference
-        const size_t mem_required =
-                ctx_size +
-                model.mm_length +
-                MEM_REQ_SCRATCH0.at(model.type) +
-                MEM_REQ_SCRATCH1.at(model.type) +
-                MEM_REQ_EVAL.at(model.type);
-
-        // this is the memory required by one llama_state
-        const size_t mem_required_state =
-                scale * MEM_REQ_KV_SELF.at(model.type);
-
-        fprintf(stderr, "%s: mem required  = %7.2f MB (+ %7.2f MB per state)\n", __func__,
-                mem_required / 1024.0 / 1024.0, mem_required_state / 1024.0 / 1024.0);
-    }
+    print_memory_loaded(ctx, memory_type, ctx_size);
 
     // create the ggml context
     {
