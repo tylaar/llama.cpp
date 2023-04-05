@@ -203,6 +203,132 @@ llama.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama.cpp.s
 .PHONY : llama.cpp.s
 
+llama_context.o: llama_context.cpp.o
+.PHONY : llama_context.o
+
+# target to build an object file
+llama_context.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_context.cpp.o
+.PHONY : llama_context.cpp.o
+
+llama_context.i: llama_context.cpp.i
+.PHONY : llama_context.i
+
+# target to preprocess a source file
+llama_context.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_context.cpp.i
+.PHONY : llama_context.cpp.i
+
+llama_context.s: llama_context.cpp.s
+.PHONY : llama_context.s
+
+# target to generate assembly for a file
+llama_context.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_context.cpp.s
+.PHONY : llama_context.cpp.s
+
+llama_eval.o: llama_eval.cpp.o
+.PHONY : llama_eval.o
+
+# target to build an object file
+llama_eval.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_eval.cpp.o
+.PHONY : llama_eval.cpp.o
+
+llama_eval.i: llama_eval.cpp.i
+.PHONY : llama_eval.i
+
+# target to preprocess a source file
+llama_eval.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_eval.cpp.i
+.PHONY : llama_eval.cpp.i
+
+llama_eval.s: llama_eval.cpp.s
+.PHONY : llama_eval.s
+
+# target to generate assembly for a file
+llama_eval.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_eval.cpp.s
+.PHONY : llama_eval.cpp.s
+
+llama_load.o: llama_load.cpp.o
+.PHONY : llama_load.o
+
+# target to build an object file
+llama_load.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_load.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/quantize.dir/build.make CMakeFiles/quantize.dir/llama_load.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ggml.dir/build.make CMakeFiles/ggml.dir/llama_load.cpp.o
+.PHONY : llama_load.cpp.o
+
+llama_load.i: llama_load.cpp.i
+.PHONY : llama_load.i
+
+# target to preprocess a source file
+llama_load.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_load.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/quantize.dir/build.make CMakeFiles/quantize.dir/llama_load.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ggml.dir/build.make CMakeFiles/ggml.dir/llama_load.cpp.i
+.PHONY : llama_load.cpp.i
+
+llama_load.s: llama_load.cpp.s
+.PHONY : llama_load.s
+
+# target to generate assembly for a file
+llama_load.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_load.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/quantize.dir/build.make CMakeFiles/quantize.dir/llama_load.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ggml.dir/build.make CMakeFiles/ggml.dir/llama_load.cpp.s
+.PHONY : llama_load.cpp.s
+
+llama_loader.o: llama_loader.cpp.o
+.PHONY : llama_loader.o
+
+# target to build an object file
+llama_loader.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_loader.cpp.o
+.PHONY : llama_loader.cpp.o
+
+llama_loader.i: llama_loader.cpp.i
+.PHONY : llama_loader.i
+
+# target to preprocess a source file
+llama_loader.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_loader.cpp.i
+.PHONY : llama_loader.cpp.i
+
+llama_loader.s: llama_loader.cpp.s
+.PHONY : llama_loader.s
+
+# target to generate assembly for a file
+llama_loader.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_loader.cpp.s
+.PHONY : llama_loader.cpp.s
+
+llama_memory_mapper.o: llama_memory_mapper.cpp.o
+.PHONY : llama_memory_mapper.o
+
+# target to build an object file
+llama_memory_mapper.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_memory_mapper.cpp.o
+.PHONY : llama_memory_mapper.cpp.o
+
+llama_memory_mapper.i: llama_memory_mapper.cpp.i
+.PHONY : llama_memory_mapper.i
+
+# target to preprocess a source file
+llama_memory_mapper.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_memory_mapper.cpp.i
+.PHONY : llama_memory_mapper.cpp.i
+
+llama_memory_mapper.s: llama_memory_mapper.cpp.s
+.PHONY : llama_memory_mapper.s
+
+# target to generate assembly for a file
+llama_memory_mapper.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llama.dir/build.make CMakeFiles/llama.dir/llama_memory_mapper.cpp.s
+.PHONY : llama_memory_mapper.cpp.s
+
 main.o: main.cpp.o
 .PHONY : main.o
 
@@ -295,6 +421,21 @@ help:
 	@echo "... llama.o"
 	@echo "... llama.i"
 	@echo "... llama.s"
+	@echo "... llama_context.o"
+	@echo "... llama_context.i"
+	@echo "... llama_context.s"
+	@echo "... llama_eval.o"
+	@echo "... llama_eval.i"
+	@echo "... llama_eval.s"
+	@echo "... llama_load.o"
+	@echo "... llama_load.i"
+	@echo "... llama_load.s"
+	@echo "... llama_loader.o"
+	@echo "... llama_loader.i"
+	@echo "... llama_loader.s"
+	@echo "... llama_memory_mapper.o"
+	@echo "... llama_memory_mapper.i"
+	@echo "... llama_memory_mapper.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"

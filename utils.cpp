@@ -71,7 +71,7 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
         } else if (arg == "--color") {
             params.use_color = true;
         } else if (arg == "-r" || arg == "--reverse-prompt") {
-            params.antiprompt = argv[++i];
+            //params.antiprompt = argv[++i];
         } else if (arg == "-h" || arg == "--help") {
             gpt_print_usage(argc, argv, params);
             exit(0);
@@ -576,4 +576,21 @@ size_t ggml_quantize_q4_1(float * src, void * dst, int n, int k, int qk, int64_t
     }
 
     return (n/k)*row_size;
+}
+
+void set_console_color(console_state & con_st, console_color_t color) {
+    if (con_st.use_color && con_st.color != color) {
+        switch(color) {
+            case CONSOLE_COLOR_DEFAULT:
+                printf(ANSI_COLOR_RESET);
+                break;
+            case CONSOLE_COLOR_PROMPT:
+                printf(ANSI_COLOR_YELLOW);
+                break;
+            case CONSOLE_COLOR_USER_INPUT:
+                printf(ANSI_BOLD ANSI_COLOR_GREEN);
+                break;
+        }
+        con_st.color = color;
+    }
 }

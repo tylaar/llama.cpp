@@ -7,7 +7,9 @@ set(CMAKE_C_STANDARD 11)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 find_package(Drogon CONFIG REQUIRED)
-find_package(fmt CONFIG REQUIRED)
+find_package(fmt REQUIRED)
+
+include_directories(~/hack/vcpkg/installed/arm64-osx/include)
 
 if (NOT XCODE AND NOT MSVC AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -112,16 +114,16 @@ add_executable(llama
         main.cpp
         utils.cpp
         llama.cpp
-        utils.h)
+        utils.h llama_load.cpp llama_eval.cpp llama_context.cpp llama_context.h llama_loader.cpp llama_loader.h llama_loader.h llama_memory_mapper.cpp llama_memory_mapper.h)
 
 add_executable(quantize
     quantize.cpp
     utils.cpp
-    utils.h)
+    utils.h llama_load.cpp)
 
 add_library(ggml
         ggml.c
-        ggml.h)
+        ggml.h llama_load.cpp)
 
 target_compile_definitions(ggml PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_compile_definitions(llama PUBLIC ${LLAMA_EXTRA_FLAGS})
