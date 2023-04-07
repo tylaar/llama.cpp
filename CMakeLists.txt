@@ -9,7 +9,11 @@ find_package(Threads REQUIRED)
 find_package(Drogon CONFIG REQUIRED)
 find_package(fmt REQUIRED)
 
-include_directories(~/hack/vcpkg/installed/arm64-osx/include)
+if (APPLE)
+    include_directories(~/hack/vcpkg/installed/arm64-osx/include)
+else()
+    include_directories(~/hack/vcpkg/installed/x64-linux/include)
+endif()
 
 if (NOT XCODE AND NOT MSVC AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -119,7 +123,7 @@ add_executable(llama
 add_executable(quantize
     quantize.cpp
     utils.cpp
-    utils.h llama_load.cpp)
+    utils.h llama_loader.h llama_load.cpp llama_eval.cpp llama_context.cpp llama_context.h llama_loader.cpp llama_loader.h llama_loader.h llama_memory_mapper.cpp llama_memory_mapper.h)
 
 add_library(ggml
         ggml.c
@@ -132,6 +136,7 @@ target_compile_definitions(quantize PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_link_libraries(ggml PRIVATE ${LLAMA_EXTRA_LIBS})
 target_include_directories(ggml PUBLIC .)
 target_link_libraries(quantize PRIVATE ggml)
+target_link_libraries(quantize PRIVATE fmt::fmt)
 target_link_libraries(llama PRIVATE ggml)
 target_link_libraries(llama PRIVATE fmt::fmt)
 target_link_libraries(ggml PRIVATE Threads::Threads)
