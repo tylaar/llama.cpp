@@ -16,13 +16,13 @@ bool llama_loader::verify_model_magic() {
     fin.read((char *) &magic, sizeof(magic));
     if (magic == LLAMA_FILE_MAGIC_UNVERSIONED) {
         std::cerr << fmt::format(
-                "%s: invalid model file '%s' (too old, regenerate your model files or convert them with convert-unversioned-ggml-to-ggml.py!)\n",
+                "{}: invalid model file '{}' (too old, regenerate your model files or convert them with convert-unversioned-ggml-to-ggml.py!)\n",
                 __func__, fname.c_str());
         return false;
     }
     if (magic != LLAMA_FILE_MAGIC) {
         std::cerr << fmt::format(
-                "%s: invalid model file (bad magic [got %#x want %#x])\n"
+                "{}: invalid model file (bad magic [got %#x want %#x])\n"
                 "\tyou most likely need to regenerate your ggml files\n"
                 "\tthe benefit is you'll get 10-100x faster load times\n"
                 "\tsee https://github.com/ggerganov/llama.cpp/issues/91\n"
@@ -36,7 +36,7 @@ bool llama_loader::verify_model_magic() {
     fin.read((char *) &format_version, sizeof(format_version));
 
     if (format_version != LLAMA_FILE_VERSION) {
-        fprintf(stderr, "%s: invalid model file '%s' (unsupported format version)" ", expected %d)\n",
+        fprintf(stderr, "{}: invalid model file '{}' (unsupported format version)" ", expected {})\n",
                 __func__, fname.c_str(), LLAMA_FILE_VERSION);
         return false;
     }
@@ -47,7 +47,7 @@ bool llama_loader::verify_model_magic() {
 void llama_loader::mmap_memory() {
     mm_addr = (char *) llama_memory_mapper::mmap_file(fname.c_str(), &model.mm_length);
     if (mm_addr == NULL) {
-        throw std::invalid_argument(fmt::format("%s: failed to mmap '%s'\n", __func__, fname.c_str()));
+        throw std::invalid_argument(fmt::format("{}: failed to mmap '{}'\n", __func__, fname.c_str()));
     }
     model.mm_addr = mm_addr;
     std::cout << __func__  << fmt::format(" ggml map size = %6.2f MB\n", model.mm_length / (1024.0 * 1024.0));
@@ -80,8 +80,8 @@ int llama_loader::load_model_hyper_params(int n_ctx, int n_parts) {
 
         // temp warning to tell the user to use "--n_parts"
         if (hparams.f16 == 4 && n_parts != 1) {
-            std::cerr << fmt::format( "%s: GPTQ model detected - are you sure n_parts should be %d? we normally expect it to be 1\n", __func__, n_parts);
-            std::cerr << fmt::format( "%s: use '--n_parts 1' if necessary\n", __func__);
+            std::cerr << fmt::format( "{}: GPTQ model detected - are you sure n_parts should be {}? we normally expect it to be 1\n", __func__, n_parts);
+            std::cerr << fmt::format( "{}: use '--n_parts 1' if necessary\n", __func__);
         }
 
         if (hparams.n_layer == 32) {
@@ -100,17 +100,17 @@ int llama_loader::load_model_hyper_params(int n_ctx, int n_parts) {
             model.type = e_model::MODEL_65B;
         }
 
-        std::cerr << fmt::format( "%s: n_vocab = %d\n", __func__, hparams.n_vocab);
-        std::cerr << fmt::format( "%s: n_ctx   = %d\n", __func__, hparams.n_ctx);
-        std::cerr << fmt::format( "%s: n_embd  = %d\n", __func__, hparams.n_embd);
-        std::cerr << fmt::format( "%s: n_mult  = %d\n", __func__, hparams.n_mult);
-        std::cerr << fmt::format( "%s: n_head  = %d\n", __func__, hparams.n_head);
-        std::cerr << fmt::format( "%s: n_layer = %d\n", __func__, hparams.n_layer);
-        std::cerr << fmt::format( "%s: n_rot   = %d\n", __func__, hparams.n_rot);
-        std::cerr << fmt::format( "%s: f16     = %d\n", __func__, hparams.f16);
-        std::cerr << fmt::format( "%s: n_ff    = %d\n", __func__, n_ff);
-        std::cerr << fmt::format( "%s: n_parts = %d\n", __func__, n_parts);
-        std::cerr << fmt::format( "%s: type    = %d\n", __func__, model.type);
+        std::cerr << fmt::format( "{}: n_vocab = {}\n", __func__, hparams.n_vocab);
+        std::cerr << fmt::format( "{}: n_ctx   = {}\n", __func__, hparams.n_ctx);
+        std::cerr << fmt::format( "{}: n_embd  = {}\n", __func__, hparams.n_embd);
+        std::cerr << fmt::format( "{}: n_mult  = {}\n", __func__, hparams.n_mult);
+        std::cerr << fmt::format( "{}: n_head  = {}\n", __func__, hparams.n_head);
+        std::cerr << fmt::format( "{}: n_layer = {}\n", __func__, hparams.n_layer);
+        std::cerr << fmt::format( "{}: n_rot   = {}\n", __func__, hparams.n_rot);
+        std::cerr << fmt::format( "{}: f16     = {}\n", __func__, hparams.f16);
+        std::cerr << fmt::format( "{}: n_ff    = {}\n", __func__, n_ff);
+        std::cerr << fmt::format( "{}: n_parts = {}\n", __func__, n_parts);
+        std::cerr << fmt::format( "{}: type    = {}\n", __func__, model.type);
     }
     return n_ff;
 }
@@ -120,7 +120,7 @@ size_t llama_loader::calculate_ctx_size() {
     const auto &hparams = model.hparams;
     const int n_layer = hparams.n_layer;
     ctx_size += (5 + 10 * n_layer) * 256; // object overhead
-    std::cerr << fmt::format( "%s: ggml ctx size = %6.2f KB\n", __func__, ctx_size / 1024.0);
+    std::cerr << fmt::format( "{}: ggml ctx size = %6.2f KB\n", __func__, ctx_size / 1024.0);
     return ctx_size;
 }
 
@@ -140,7 +140,7 @@ void llama_loader::print_memory_loaded(ggml_type memory_type, size_t ctx_size) {
     const size_t mem_required_state =
             scale * MEM_REQ_KV_SELF.at(model.type);
 
-    std::cerr << fmt::format( "%s: mem required  = %7.2f MB (+ %7.2f MB per state)\n", __func__,
+    std::cerr << fmt::format( "{}: mem required  = %7.2f MB (+ %7.2f MB per state)\n", __func__,
             mem_required / 1024.0 / 1024.0, mem_required_state / 1024.0 / 1024.0);
 }
 
@@ -285,16 +285,16 @@ size_t llama_loader::load_layer_weight() {
         fin.read(&name[0], length);
 
         if (model.tensors.find(name.data()) == model.tensors.end()) {
-            throw std::invalid_argument(fmt::format("%s: unknown tensor '%s' in model file", __func__, name.data()));
+            throw std::invalid_argument(fmt::format("{}: unknown tensor '{}' in model file", __func__, name.data()));
         }
 
         auto tensor = model.tensors[name.data()];
 
         if (ggml_nelements(tensor) != nelements) {
-            throw std::invalid_argument(fmt::format("%s: tensor '%s' has wrong size in model file", __func__, name.data()));
+            throw std::invalid_argument(fmt::format("{}: tensor '{}' has wrong size in model file", __func__, name.data()));
         }
         if (tensor->ne[0] != ne[0] || tensor->ne[1] != ne[1]) {
-            throw std::invalid_argument(fmt::format("%s: tensor '%s' has wrong shape in model file: got [%d, %d], expected [%d, %d]\n",
+            throw std::invalid_argument(fmt::format("{}: tensor '{}' has wrong shape in model file: got [{}, {}], expected [{}, {}]\n",
                                                     __func__, name.data(), tensor->ne[0], tensor->ne[1], ne[0], ne[1]));
         }
         if (0) {
@@ -311,7 +311,7 @@ size_t llama_loader::load_layer_weight() {
                 assert(ne[0] % 64 == 0);
                 break;
             default:
-                fprintf(stderr, "%s: unknown ftype %d in model file\n", __func__, ftype);
+                fprintf(stderr, "{}: unknown ftype {} in model file\n", __func__, ftype);
                 return false;
         };
 
