@@ -15,13 +15,13 @@ bool llama_loader::verify_model_magic() {
     uint32_t magic;
     fin.read((char *) &magic, sizeof(magic));
     if (magic == LLAMA_FILE_MAGIC_UNVERSIONED) {
-        fprintf(stderr,
+        std::cerr << fmt::format(
                 "%s: invalid model file '%s' (too old, regenerate your model files or convert them with convert-unversioned-ggml-to-ggml.py!)\n",
                 __func__, fname.c_str());
         return false;
     }
     if (magic != LLAMA_FILE_MAGIC) {
-        fprintf(stderr,
+        std::cerr << fmt::format(
                 "%s: invalid model file (bad magic [got %#x want %#x])\n"
                 "\tyou most likely need to regenerate your ggml files\n"
                 "\tthe benefit is you'll get 10-100x faster load times\n"
@@ -80,8 +80,8 @@ int llama_loader::load_model_hyper_params(int n_ctx, int n_parts) {
 
         // temp warning to tell the user to use "--n_parts"
         if (hparams.f16 == 4 && n_parts != 1) {
-            fprintf(stderr, "%s: GPTQ model detected - are you sure n_parts should be %d? we normally expect it to be 1\n", __func__, n_parts);
-            fprintf(stderr, "%s: use '--n_parts 1' if necessary\n", __func__);
+            std::cerr << fmt::format( "%s: GPTQ model detected - are you sure n_parts should be %d? we normally expect it to be 1\n", __func__, n_parts);
+            std::cerr << fmt::format( "%s: use '--n_parts 1' if necessary\n", __func__);
         }
 
         if (hparams.n_layer == 32) {
@@ -100,17 +100,17 @@ int llama_loader::load_model_hyper_params(int n_ctx, int n_parts) {
             model.type = e_model::MODEL_65B;
         }
 
-        fprintf(stderr, "%s: n_vocab = %d\n", __func__, hparams.n_vocab);
-        fprintf(stderr, "%s: n_ctx   = %d\n", __func__, hparams.n_ctx);
-        fprintf(stderr, "%s: n_embd  = %d\n", __func__, hparams.n_embd);
-        fprintf(stderr, "%s: n_mult  = %d\n", __func__, hparams.n_mult);
-        fprintf(stderr, "%s: n_head  = %d\n", __func__, hparams.n_head);
-        fprintf(stderr, "%s: n_layer = %d\n", __func__, hparams.n_layer);
-        fprintf(stderr, "%s: n_rot   = %d\n", __func__, hparams.n_rot);
-        fprintf(stderr, "%s: f16     = %d\n", __func__, hparams.f16);
-        fprintf(stderr, "%s: n_ff    = %d\n", __func__, n_ff);
-        fprintf(stderr, "%s: n_parts = %d\n", __func__, n_parts);
-        fprintf(stderr, "%s: type    = %d\n", __func__, model.type);
+        std::cerr << fmt::format( "%s: n_vocab = %d\n", __func__, hparams.n_vocab);
+        std::cerr << fmt::format( "%s: n_ctx   = %d\n", __func__, hparams.n_ctx);
+        std::cerr << fmt::format( "%s: n_embd  = %d\n", __func__, hparams.n_embd);
+        std::cerr << fmt::format( "%s: n_mult  = %d\n", __func__, hparams.n_mult);
+        std::cerr << fmt::format( "%s: n_head  = %d\n", __func__, hparams.n_head);
+        std::cerr << fmt::format( "%s: n_layer = %d\n", __func__, hparams.n_layer);
+        std::cerr << fmt::format( "%s: n_rot   = %d\n", __func__, hparams.n_rot);
+        std::cerr << fmt::format( "%s: f16     = %d\n", __func__, hparams.f16);
+        std::cerr << fmt::format( "%s: n_ff    = %d\n", __func__, n_ff);
+        std::cerr << fmt::format( "%s: n_parts = %d\n", __func__, n_parts);
+        std::cerr << fmt::format( "%s: type    = %d\n", __func__, model.type);
     }
     return n_ff;
 }
@@ -120,7 +120,7 @@ size_t llama_loader::calculate_ctx_size() {
     const auto &hparams = model.hparams;
     const int n_layer = hparams.n_layer;
     ctx_size += (5 + 10 * n_layer) * 256; // object overhead
-    fprintf(stderr, "%s: ggml ctx size = %6.2f KB\n", __func__, ctx_size / 1024.0);
+    std::cerr << fmt::format( "%s: ggml ctx size = %6.2f KB\n", __func__, ctx_size / 1024.0);
     return ctx_size;
 }
 
@@ -140,7 +140,7 @@ void llama_loader::print_memory_loaded(ggml_type memory_type, size_t ctx_size) {
     const size_t mem_required_state =
             scale * MEM_REQ_KV_SELF.at(model.type);
 
-    fprintf(stderr, "%s: mem required  = %7.2f MB (+ %7.2f MB per state)\n", __func__,
+    std::cerr << fmt::format( "%s: mem required  = %7.2f MB (+ %7.2f MB per state)\n", __func__,
             mem_required / 1024.0 / 1024.0, mem_required_state / 1024.0 / 1024.0);
 }
 
@@ -299,7 +299,7 @@ size_t llama_loader::load_layer_weight() {
         }
         if (0) {
             static const char *ftype_str[] = {"f32", "f16", "q4_0", "q4_1",};
-            fprintf(stderr, "%24s - [%5d, %5d], type = %6s\n", name.data(), ne[0], ne[1], ftype_str[ftype]);
+            std::cerr << fmt::format( "%24s - [%5d, %5d], type = %6s\n", name.data(), ne[0], ne[1], ftype_str[ftype]);
         }
 
         switch (ftype) {
