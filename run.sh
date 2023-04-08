@@ -6,5 +6,8 @@ if ! [[ "$1" =~ ^[0-9]{1,2}B$ ]]; then
     exit 1
 fi
 
+model=$1
+shift
+query=$*
 
-./llama -m ~/hack/models/llama/$1/ggml-model-q4_0.bin -p $2 -n 512 -n 512
+./llama -m ~/hack/models/llama/$model/ggml-model-q4_0.bin -p "$query" -n 512 -n 512
