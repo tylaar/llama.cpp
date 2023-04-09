@@ -125,8 +125,8 @@ bool llama_model::eval_internal(
         inpL = cur;
     }
 
-    std::cerr << "avg self-attention time" << total_sa_time / n_layer <<  " and fnn time " << total_ffn_time / n_layer << std::endl;
-    std::cerr << "total self-attention time" << total_sa_time <<  " and fnn time " << total_ffn_time << std::endl;
+    std::cerr << "avg self-attention time" << total_sa_time / n_layer / (1000.0) <<  "ms and fnn time " << total_ffn_time / n_layer / (1000.0) << "ms" << std::endl;
+    std::cerr << "total self-attention time" << total_sa_time / 1000.0 <<  "ms and fnn time " << total_ffn_time / 1000.0 << "ms" << std::endl;
     lctx->use_buf(ctx0, 0);
 
     // used at the end to optionally extract the embeddings
