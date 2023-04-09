@@ -88,7 +88,7 @@ bool llama_model::eval_internal(
 
         auto sa_time = ggml_time_us();
         cur = eval_self_attention(&gf, ctx0, cur, il, n_past, N);
-        total_sa_time += sa_time;
+        total_sa_time += (ggml_time_us() - sa_time);
 
         lctx->use_buf(ctx0, 1);
 
@@ -118,7 +118,7 @@ bool llama_model::eval_internal(
                                cur);
         }
 
-        total_ffn_time += ffn_time;
+        total_ffn_time += (ggml_time_us() - ffn_time);
         cur = ggml_add(ctx0, cur, inpFF);
 
         // input for next layer
