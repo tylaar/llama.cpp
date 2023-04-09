@@ -73,6 +73,8 @@ bool llama_model::eval_internal(
 
     struct ggml_tensor *inpL = ggml_get_rows(ctx0, tok_embeddings, embd);
 
+    long long total_sa_time = 0;
+    long long total_ffn_time = 0;
     for (int il = 0; il < n_layer; ++il) {
         struct ggml_tensor *inpSA = inpL;
         struct ggml_tensor *cur;
@@ -84,13 +86,15 @@ bool llama_model::eval_internal(
 
         // self-attention
 
+        auto sa_time = ggml_time_us();
         cur = eval_self_attention(&gf, ctx0, cur, il, n_past, N);
-
+        total_sa_time += sa_time;
 
         lctx->use_buf(ctx0, 1);
 
         struct ggml_tensor *inpFF = ggml_add(ctx0, cur, inpSA);
 
+        auto ffn_time = ggml_time_us();
         // feed-forward network
         {
             // norm
@@ -114,12 +118,15 @@ bool llama_model::eval_internal(
                                cur);
         }
 
+        total_ffn_time += ffn_time;
         cur = ggml_add(ctx0, cur, inpFF);
 
         // input for next layer
         inpL = cur;
     }
 
+    std::cerr << "avg self-attention time" << total_sa_time / n_layer <<  " and fnn time " << total_ffn_time / n_layer << std::endl;
+    std::cerr << "total self-attention time" << total_sa_time <<  " and fnn time " << total_ffn_time << std::endl;
     lctx->use_buf(ctx0, 0);
 
     // used at the end to optionally extract the embeddings
@@ -129,7 +136,9 @@ bool llama_model::eval_internal(
     inpL = eval_norm(ctx0, inpL, norm);
 
     // lm_head
+    auto fmm_time = ggml_time_us();
     inpL = ggml_mul_mat(ctx0, output, inpL);
+    std::cerr << "final mul_mat for layer cost " << ggml_time_us() - fmm_time << std::endl;
 
     lctx->use_buf(ctx0, -1);
 
