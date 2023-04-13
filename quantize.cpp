@@ -1,35 +1,26 @@
 #include "ggml.h"
+#include "llama.h"
 
-#include "utils.h"
-
-#include <cassert>
-#include <cmath>
 #include <cstdio>
-#include <cstring>
-#include <fstream>
-#include <map>
 #include <string>
-#include <vector>
 #include <regex>
+#include <fstream>
 
-// TODO: move somewhere else
-#define QK 32
-
-// default hparams (LLaMA76B)
-struct llama_hyper_params {
-    int32_t n_vocab = 32000;
-    int32_t n_ctx   = 512;   // this is provided as user input?
-    int32_t n_embd  = 4096;
-    int32_t n_mult  = 256;
-    int32_t n_head  = 32;
-    int32_t n_layer = 32;
-    int32_t n_rot   = 64;
-    int32_t f16     = 1;
-};
-
-
-// quantize a model
-bool llama_model_quantize(const std::string & fname_inp, const std::string & fname_out, int itype) {
+static bool report_bad_magic(const char *path, uint32_t got, uint32_t want) {
+    fprintf(stderr,
+            "%s: invalid model file (bad magic [got %#x want %#x])\n"
+            "\tyou most likely need to regenerate your ggml files\n"
+            "\tthe benefit is you'll get 10-100x faster load times\n"
+            "\tsee https://github.com/ggerganov/llama.cpp/issues/91\n"
+            "\tuse convert-pth-to-ggml.py to regenerate from original pth\n"
+            "\tuse migrate-ggml-2023-03-30-pr613.py if you deleted originals\n",
+            path, got, want);
+    return false;
+}
+// usage:
+//  ./llama-quantize models/llama/ggml-model.bin models/llama/ggml-model-quant.bin type
+//
+static bool llama_model_quantize_internal(const std::string & fname_inp, const std::string & fname_out, int itype) {
     ggml_type type = GGML_TYPE_Q4_1;
 
     switch (itype) {
@@ -43,7 +34,7 @@ bool llama_model_quantize(const std::string & fname_inp, const std::string & fna
         return false;
     }
 
-    gpt_vocab vocab;
+    llama_vocab vocab;
 
     printf("%s: loading model from '%s'\n", __func__, fname_inp.c_str());
 
@@ -63,12 +54,27 @@ bool llama_model_quantize(const std::string & fname_inp, const std::string & fna
     {
         uint32_t magic;
         finp.read((char *) &magic, sizeof(magic));
-        if (magic != 0x67676d6c) {
-            fprintf(stderr, "%s: invalid model file '%s' (bad magic)\n", __func__, fname_inp.c_str());
+        if (magic == LLAMA_FILE_MAGIC_UNVERSIONED) {
+            fprintf(stderr, "%s: invalid model file '%s' (too old, regenerate your model files!)\n",
+                    __func__, fname_inp.c_str());
             return false;
+        }
+        if (magic != LLAMA_FILE_MAGIC) {
+            return report_bad_magic(fname_inp.c_str(), magic, LLAMA_FILE_MAGIC);
         }
 
         fout.write((char *) &magic, sizeof(magic));
+
+        uint32_t format_version;
+        finp.read((char *) &format_version, sizeof(format_version));
+
+        if (format_version != LLAMA_FILE_VERSION) {
+            fprintf(stderr, "%s: invalid model file '%s' (unsupported format version , expected %d)\n",
+                    __func__, fname_inp.c_str(), format_version, LLAMA_FILE_VERSION);
+            return false;
+        }
+
+        fout.write((char *) &format_version, sizeof(format_version));
     }
 
     llama_hyper_params hparams;
@@ -112,18 +118,26 @@ bool llama_model_quantize(const std::string & fname_inp, const std::string & fna
             return false;
         }
 
-        std::string word;
+        std::vector<char> word(32);
+        vocab.id_to_token.resize(n_vocab);
         for (int i = 0; i < n_vocab; i++) {
             uint32_t len;
             finp.read ((char *) &len, sizeof(len));
             fout.write((char *) &len, sizeof(len));
 
             word.resize(len);
-            finp.read ((char *) word.data(), len);
-            fout.write((char *) word.data(), len);
+            finp.read ((char *) &word[0], len);
+            fout.write((char *) &word[0], len);
 
-            vocab.token_to_id[word] = i;
-            vocab.id_to_token[i] = word;
+            float score;
+            finp.read ((char *) &score, sizeof(score));
+            fout.write((char *) &score, sizeof(score));
+
+            vocab.token_to_id[word.data()] = i;
+
+            auto &tok_score = vocab.id_to_token[i];
+            tok_score.tok = word.data();
+            tok_score.score = score;
         }
     }
 
@@ -164,13 +178,20 @@ bool llama_model_quantize(const std::string & fname_inp, const std::string & fna
             finp.read (&name[0], length);
 
             {
+                // ensure tensor data is aligned
+                uint64_t offset = finp.tellg();
+                offset = (offset + 31) & -32;
+                finp.seekg(offset);
+            }
+
+            {
                 static const char * ftype_str[] = { "f32", "f16", "q4_0", "q4_1", };
                 printf("%48s - [%5d, %5d], type = %6s ", name.data(), ne[0], ne[1], ftype_str[ftype]);
             }
 
             // regexes of tensor names to be quantized
             const std::vector<std::string> k_names = {
-                ".*weight",
+                    ".*weight",
             };
 
             bool quantize = false;
@@ -218,6 +239,13 @@ bool llama_model_quantize(const std::string & fname_inp, const std::string & fna
             }
             fout.write(&name[0], length);
 
+            {
+                // ensure tensor data is aligned
+                uint64_t offset = fout.tellp();
+                offset = (offset + 31) & -32;
+                fout.seekp(offset);
+            }
+
             if (quantize) {
                 printf("quantizing .. ");
                 work.resize(nelements); // for quantization
@@ -227,30 +255,30 @@ bool llama_model_quantize(const std::string & fname_inp, const std::string & fna
 
                 switch (type) {
                     case GGML_TYPE_Q4_0:
-                        {
-                            cur_size = ggml_quantize_q4_0(data_f32.data(), work.data(), nelements, ne[0], QK, hist_cur.data());
-                        } break;
+                    {
+                        cur_size = ggml_quantize_q4_0(data_f32.data(), work.data(), nelements, ne[0], hist_cur.data());
+                    } break;
                     case GGML_TYPE_Q4_1:
-                        {
-                            cur_size = ggml_quantize_q4_1(data_f32.data(), work.data(), nelements, ne[0], QK, hist_cur.data());
-                        } break;
+                    {
+                        cur_size = ggml_quantize_q4_1(data_f32.data(), work.data(), nelements, ne[0], hist_cur.data());
+                    } break;
                     default:
-                        {
-                            fprintf(stderr, "%s: unsupported quantization type %d\n", __func__, type);
-                            return false;
-                        }
+                    {
+                        fprintf(stderr, "%s: unsupported quantization type %d\n", __func__, type);
+                        return false;
+                    }
                 }
 
                 fout.write(reinterpret_cast<char *>(work.data()), cur_size);
                 total_size_new += cur_size;
 
                 printf("size = %8.2f MB -> %8.2f MB | hist: ", nelements * sizeof(float)/1024.0/1024.0, cur_size/1024.0/1024.0);
-                for (int i = 0; i < hist_cur.size(); ++i) {
+                for (int i = 0; i < (int) hist_cur.size(); ++i) {
                     hist_all[i] += hist_cur[i];
                 }
 
-                for (int i = 0; i < hist_cur.size(); ++i) {
-                    printf("%5.3f ", hist_cur[i] / (float)nelements);
+                for (int i = 0; i < (int) hist_cur.size(); ++i) {
+                    printf("%5.3f ", hist_cur[i] / float(nelements));
                 }
                 printf("\n");
             } else {
@@ -267,13 +295,13 @@ bool llama_model_quantize(const std::string & fname_inp, const std::string & fna
 
         {
             int64_t sum_all = 0;
-            for (int i = 0; i < hist_all.size(); ++i) {
+            for (int i = 0; i < (int) hist_all.size(); ++i) {
                 sum_all += hist_all[i];
             }
 
             printf("%s: hist: ", __func__);
-            for (int i = 0; i < hist_all.size(); ++i) {
-                printf("%5.3f ", hist_all[i] / (float)sum_all);
+            for (int i = 0; i < (int) hist_all.size(); ++i) {
+                printf("%5.3f ", hist_all[i] / float(sum_all));
             }
             printf("\n");
         }
@@ -285,11 +313,10 @@ bool llama_model_quantize(const std::string & fname_inp, const std::string & fna
     return true;
 }
 
-// usage:
-//  ./llama-quantize models/llama/ggml-model.bin models/llama/ggml-model-quant.bin type
-//
+
 int main(int argc, char ** argv) {
     ggml_time_init();
+
     if (argc != 4) {
         fprintf(stderr, "usage: %s model-f32.bin model-quant.bin type\n", argv[0]);
         fprintf(stderr, "  type = 2 - q4_0\n");
@@ -299,7 +326,7 @@ int main(int argc, char ** argv) {
 
     // needed to initialize f16 tables
     {
-        struct ggml_init_params params = { 0, NULL };
+        struct ggml_init_params params = { 0, NULL, false };
         struct ggml_context * ctx = ggml_init(params);
         ggml_free(ctx);
     }
@@ -317,7 +344,7 @@ int main(int argc, char ** argv) {
     {
         const int64_t t_start_us = ggml_time_us();
 
-        if (!llama_model_quantize(fname_inp, fname_out, itype)) {
+        if (!llama_model_quantize_internal(fname_inp.c_str(), fname_out.c_str(), itype)) {
             fprintf(stderr, "%s: failed to quantize model from '%s'\n", __func__, fname_inp.c_str());
             return 1;
         }
@@ -330,8 +357,8 @@ int main(int argc, char ** argv) {
         const int64_t t_main_end_us = ggml_time_us();
 
         printf("\n");
-        printf("%s: quantize time = %8.2f ms\n", __func__, t_quantize_us/1000.0f);
-        printf("%s:    total time = %8.2f ms\n", __func__, (t_main_end_us - t_main_start_us)/1000.0f);
+        printf("%s: quantize time = %8.2f ms\n", __func__, t_quantize_us/1000.0);
+        printf("%s:    total time = %8.2f ms\n", __func__, (t_main_end_us - t_main_start_us)/1000.0);
     }
 
     return 0;

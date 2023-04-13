@@ -304,32 +304,9 @@ public:
     static void llama_free(llama_context * ctx);
 private:
 
-        /**
-         * Model loading part
-         */
-    // checking if file magic number matched.
-    static bool verify_model_magic(std::ifstream& fin, std::string const& fname);
-    // load hparams for model metadata purpose.
-    static int load_model_hyper_params(std::ifstream &fin, llama_context& ctx, int n_ctx, int n_parts);
-    // load model's vocab
-    static void load_model_vocab(std::ifstream &fin, llama_context& ctx);
-    // determine ggml type based on hyperparams.
-    static std::pair<ggml_type, ggml_type> determine_ggml_type(llama_context& ctx);
-
-    // verify tensor shape and dimension.
-    bool verify_tensor_shape_and_dim(ggml_tensor* tensor, std::string& name, int n_parts, int n_dims, int nelements, int ne[]);
-
-    bool verify_tensor_one_dimension(ggml_tensor* tensor, std::string& name, int nelements, int ne[]);
-    // verify tensor shape in column mode
-    bool verify_tensor_shape_by_column(ggml_tensor *tensor, std::string& name, int n_parts, int nelements, int ne[]);
-    // verify tensor shape in row mode
-    bool verify_tensor_shape_by_row(ggml_tensor *tensor, std::string& name, int n_parts, int nelements, int ne[]);
-
-    int load_model_tensor(std::ifstream &fin, int part_id);
-    // build model ctx unit according to data type.
-    bool build_ggml_ctx();
-
-    void determine_ggml_file_split(std::string& name);
+    /**
+     * Model loading part
+     */
 
     bool eval_internal(const llama_token * tokens,
                        const int   n_tokens,
@@ -340,12 +317,6 @@ private:
      */
     inline ggml_tensor* eval_self_attention(ggml_cgraph* gf, ggml_context *ctx0, ggml_tensor *cur, int il, int n_past, int N);
     inline ggml_tensor* eval_norm(ggml_context *ctx0, ggml_tensor* cur, ggml_tensor* norm);
-
-    static void print_memory_loaded(llama_context &ctx, ggml_type memory_type, size_t ctx_size);
-    static size_t calculate_ctx_size(llama_context& ctx);
-
-    static void prepare_layer_memory(llama_context &ctx, ggml_type wtype, ggml_type vtype, int n_ff);
-    static size_t load_layer_weight(llama_context& ctx, std::ifstream& fin, char* mm_addr);
 };
 
 

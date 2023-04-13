@@ -258,8 +258,8 @@ struct ggml_tensor {
     enum ggml_type type;
 
     int    n_dims;
-    int    ne[GGML_MAX_DIMS]; // number of elements
-    size_t nb[GGML_MAX_DIMS]; // stride in bytes:
+    int64_t ne[GGML_MAX_DIMS]; // number of elements
+    size_t  nb[GGML_MAX_DIMS]; // stride in bytes:
     // nb[0] = sizeof(type)
     // nb[1] = nb[0]   * ne[0] + padding
     // nb[i] = nb[i-1] * ne[i-1]
@@ -328,8 +328,8 @@ int64_t ggml_cycles_per_ms(void);
 void ggml_print_object (const struct ggml_object * obj);
 void ggml_print_objects(const struct ggml_context * ctx);
 
-int    ggml_nelements(const struct ggml_tensor * tensor);
-size_t ggml_nbytes   (const struct ggml_tensor * tensor);
+int64_t ggml_nelements(const struct ggml_tensor * tensor);
+size_t  ggml_nbytes   (const struct ggml_tensor * tensor);
 
 int    ggml_blck_size (enum ggml_type type);
 size_t ggml_type_size (enum ggml_type type); // size in bytes for all elements in a block
@@ -355,33 +355,33 @@ struct ggml_tensor * ggml_new_tensor(
         struct ggml_context * ctx,
         enum   ggml_type type,
         int    n_dims,
-        const int *ne);
+        const int64_t *ne);
 
 struct ggml_tensor * ggml_new_tensor_1d(
         struct ggml_context * ctx,
         enum   ggml_type type,
-        int    ne0);
+        int64_t ne0);
 
 struct ggml_tensor * ggml_new_tensor_2d(
         struct ggml_context * ctx,
         enum   ggml_type type,
-        int    ne0,
-        int    ne1);
+        int64_t ne0,
+        int64_t ne1);
 
 struct ggml_tensor * ggml_new_tensor_3d(
         struct ggml_context * ctx,
         enum   ggml_type type,
-        int    ne0,
-        int    ne1,
-        int    ne2);
+        int64_t ne0,
+        int64_t ne1,
+        int64_t ne2);
 
 struct ggml_tensor * ggml_new_tensor_4d(
         struct ggml_context * ctx,
         enum   ggml_type type,
-        int    ne0,
-        int    ne1,
-        int    ne2,
-        int    ne3);
+        int64_t ne0,
+        int64_t ne1,
+        int64_t ne2,
+        int64_t ne3);
 
 struct ggml_tensor * ggml_new_i32(struct ggml_context * ctx, int32_t value);
 struct ggml_tensor * ggml_new_f32(struct ggml_context * ctx, float value);
@@ -531,31 +531,41 @@ struct ggml_tensor * ggml_reshape(
 struct ggml_tensor * ggml_reshape_2d(
         struct ggml_context * ctx,
         struct ggml_tensor  * a,
-        int                   ne0,
-        int                   ne1);
+        int64_t               ne0,
+        int64_t               ne1);
 
 // return view(a)
 // TODO: when we start computing gradient, make a copy instead of view
 struct ggml_tensor * ggml_reshape_3d(
         struct ggml_context * ctx,
         struct ggml_tensor  * a,
-        int                   ne0,
-        int                   ne1,
-        int                   ne2);
+        int64_t               ne0,
+        int64_t               ne1,
+        int64_t               ne2);
 
 // offset in bytes
 struct ggml_tensor * ggml_view_1d(
         struct ggml_context * ctx,
         struct ggml_tensor  * a,
-        int                   ne0,
+        int64_t               ne0,
         size_t                offset);
 
 struct ggml_tensor * ggml_view_2d(
         struct ggml_context * ctx,
         struct ggml_tensor  * a,
-        int                   ne0,
-        int                   ne1,
+        int64_t               ne0,
+        int64_t               ne1,
         size_t                nb1, // row stride in bytes
+        size_t                offset);
+
+struct ggml_tensor * ggml_view_3d(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * a,
+        int64_t               ne0,
+        int64_t               ne1,
+        int64_t               ne2,
+        size_t                nb1, // row   stride in bytes
+        size_t                nb2, // slice stride in bytes
         size_t                offset);
 
 struct ggml_tensor * ggml_permute(
@@ -772,6 +782,30 @@ int ggml_cpu_has_wasm_simd(void);
 int ggml_cpu_has_blas(void);
 int ggml_cpu_has_sse3(void);
 int ggml_cpu_has_vsx(void);
+
+
+//
+// Internal types and functions exposed for tests and benchmarks
+//
+
+#ifdef  __cplusplus
+// restrict not standard in C++
+#define GGML_RESTRICT
+#else
+#define GGML_RESTRICT restrict
+#endif
+typedef void (*dequantize_row_q_t)(const void * GGML_RESTRICT x, float * GGML_RESTRICT y, int k);
+typedef void (*quantize_row_q_t)(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int k);
+typedef void (*vec_dot_q_t)(const int n, float * GGML_RESTRICT s, const void * GGML_RESTRICT x, const void * GGML_RESTRICT y);
+
+typedef struct {
+    dequantize_row_q_t dequantize_row_q;
+    quantize_row_q_t   quantize_row_q;
+    quantize_row_q_t   quantize_row_q_reference;
+    vec_dot_q_t        vec_dot_q;
+} quantize_fns_t;
+
+quantize_fns_t ggml_internal_get_quantize_fn(size_t i);
 
 #ifdef  __cplusplus
 }
