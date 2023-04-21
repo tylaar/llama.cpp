@@ -25,7 +25,6 @@ import numpy as np
 
 from transformers import GPTJForCausalLM, GPTNeoXForCausalLM, AutoTokenizer
 
-
 # ref: https://github.com/openai/gpt-2/blob/master/src/encoder.py
 def bytes_to_unicode():
     """
@@ -33,28 +32,21 @@ def bytes_to_unicode():
     The reversible bpe codes work on unicode strings.
     This means you need a large # of unicode characters in your vocab if you want to avoid UNKs.
     When you're at something like a 10B token dataset you end up needing around 5K for decent coverage.
-    This is a significant percentage of your normal, say, 32K bpe vocab.
+    This is a signficant percentage of your normal, say, 32K bpe vocab.
     To avoid that, we want lookup tables between utf-8 bytes and unicode strings.
     And avoids mapping to whitespace/control characters the bpe code barfs on.
     """
-    _chr = chr
-    bs = (
-            list(range(ord("!"), ord("~") + 1))
-            + list(range(ord("¡"), ord("¬") + 1))
-            + list(range(ord("®"), ord("ÿ") + 1))
-    )
+    bs = list(range(ord("!"), ord("~")+1))+list(range(ord("¡"), ord("¬")+1))+list(range(ord("®"), ord("ÿ")+1))
     cs = bs[:]
     n = 0
     for b in range(2**8):
         if b not in bs:
             bs.append(b)
-            cs.append(2**8 + n)
+            cs.append(2**8+n)
             n += 1
-    cs = [_chr(n) for n in cs]
-    res = dict(zip(bs, cs))
-    #todo hack
-    res[' '] = 185
-    return res
+    cs = [chr(n) for n in cs]
+    return dict(zip(bs, cs))
+
 
 def calculate_rot_dim(hparams):
     base = hparams['rotary_emb_base']
@@ -90,6 +82,12 @@ tokenizer = AutoTokenizer.from_pretrained(
     cache_dir="./pythia-70m-deduped/step143000",
 )
 
+tokenizer.save_vocabulary(dir_model, "pythia")
+
+vocab = None
+with open(dir_model + "/pythia-vocab.json", "r", encoding="utf-8") as f:
+    vocab = json.load(f)
+
 model_dict = torch.load(dir_model + '/pytorch_model.bin')
 
 for k, v in model_dict.items():
@@ -101,12 +99,14 @@ try:
 except OSError:
     pass
 
-vocab = tokenizer.vocab
+# vocab = tokenizer.vocab
 ftype = 1
 fout = open(fname_out, "wb")
 
 fout.write(struct.pack("i", 0x67676d6c)) # magic: ggml in hex
-vocab_size = hparams['vocab_size']
+# todo: which vocab_sie is correct? in config.json or in tokenizer?
+# vocab_size = hparams['vocab_size']
+vocab_size = len(vocab)
 print('vocab_size:', vocab_size)
 fout.write(struct.pack("i", vocab_size))
 
@@ -142,11 +142,7 @@ fout.write(struct.pack("i", len(vocab)))
 
 for key in vocab:
     text = None
-    if key.strip() == '':
-        # TODO very big warning here.
-        text = bytearray([185 for c in key])
-    else:
-        text = bytearray([byte_decoder[c] for c in key])
+    text = bytearray([byte_decoder[c] for c in key])
     fout.write(struct.pack("i", len(text)))
     fout.write(text)
 
