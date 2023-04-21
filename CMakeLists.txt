@@ -114,6 +114,10 @@ endif()
 #     set(LLAMA_EXTRA_FLAGS ${LLAMA_EXTRA_FLAGS} -DGGML_PERF)
 # endif()
 
+add_executable(pythia
+        pythia.cpp
+        utils.cpp utils.h)
+
 add_executable(llama
         main.cpp
         utils.cpp
@@ -131,6 +135,7 @@ add_library(ggml
 
 target_compile_definitions(ggml PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_compile_definitions(llama PUBLIC ${LLAMA_EXTRA_FLAGS})
+target_compile_definitions(pythia PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_compile_definitions(quantize PUBLIC ${LLAMA_EXTRA_FLAGS})
 
 target_link_libraries(ggml PRIVATE ${LLAMA_EXTRA_LIBS})
@@ -140,5 +145,6 @@ target_link_libraries(quantize PRIVATE fmt::fmt)
 target_link_libraries(quantize PRIVATE Drogon::Drogon)
 target_link_libraries(llama PRIVATE ggml)
 target_link_libraries(llama PRIVATE fmt::fmt)
+target_link_libraries(pythia PRIVATE ggml)
 
 target_link_libraries(ggml PRIVATE Threads::Threads)
