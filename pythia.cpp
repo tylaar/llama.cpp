@@ -7,12 +7,15 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <fmt/core.h>
 #include <map>
 #include <string>
 #include <vector>
 #include <iostream>
 #include <unistd.h>
 
+const std::string model_prefix = "gpt_neox.";
+const std::string layer_prefix = "gpt_neox.layers.";
 // default hparams (GPT-J 6B)
 struct pythia_hparams {
     int32_t n_vocab = 50304;
@@ -26,35 +29,40 @@ struct pythia_hparams {
 
 struct pythia_layer {
     // normalization
-    struct ggml_tensor * ln_1_g;
-    struct ggml_tensor * ln_1_b;
+    struct ggml_tensor * ln_input_norm_w; // input_norm_weight
+    struct ggml_tensor * ln_input_norm_b; // input_norm_bias
+
+    struct ggml_tensor * ln_post_norm_w; // post_norm_weight
+    struct ggml_tensor * ln_post_norm_b; // post_norm_bias
 
     // attention
-    struct ggml_tensor * c_attn_q_proj_w;
-    struct ggml_tensor * c_attn_k_proj_w;
-    struct ggml_tensor * c_attn_v_proj_w;
+    struct ggml_tensor * c_attn_b; // attn_bias_mask
+    struct ggml_tensor * c_attn_k_v_w; // attn_unit_k_v_w
+    struct ggml_tensor * c_attn_k_v_b; // attn_unit_k_v_b
 
-    struct ggml_tensor * c_attn_proj_w;
+    struct ggml_tensor * c_attn_dense_w; // attn_dense_weight
+    struct ggml_tensor * c_attn_dense_b; // attn_dense_bias
 
     // ff
-    struct ggml_tensor * c_mlp_fc_w;
-    struct ggml_tensor * c_mlp_fc_b;
+    struct ggml_tensor * c_mlp_h_to_4h_w;
+    struct ggml_tensor * c_mlp_h_to_4h_b;
 
-    struct ggml_tensor * c_mlp_proj_w;
-    struct ggml_tensor * c_mlp_proj_b;
+    struct ggml_tensor * c_mlp_4h_to_h_w;
+    struct ggml_tensor * c_mlp_4h_to_h_b;
+
+    // rot inv.feq
+    struct ggml_tensor * c_rot_inv_freq; // rot_freq
 };
 
 struct pythia_model {
     pythia_hparams hparams;
 
+    struct ggml_tensor * embed_in_wte; // position embedding
+    struct ggml_tensor * embed_out_wte;
+
     // normalization
-    struct ggml_tensor * ln_f_g;
-    struct ggml_tensor * ln_f_b;
-
-    struct ggml_tensor * wte; // position embedding
-
-    struct ggml_tensor * lmh_g; // language model head
-    struct ggml_tensor * lmh_b; // language model bias
+    struct ggml_tensor * final_layer_norm_w; // final_layer_w
+    struct ggml_tensor * final_layer_norm_b; // final_layer_b
 
     std::vector<pythia_layer> layers;
 
@@ -161,37 +169,51 @@ bool pythia_model_load(const std::string & fname, pythia_model & model, gpt_voca
         const int n_layer = hparams.n_layer;
         const int n_ctx   = hparams.n_ctx;
         const int n_vocab = hparams.n_vocab;
+        const int n_rot = hparams.n_rot;
 
-        ctx_size += n_embd*ggml_type_sizef(GGML_TYPE_F32); // ln_f_g
-        ctx_size += n_embd*ggml_type_sizef(GGML_TYPE_F32); // ln_f_b
+        ctx_size += n_embd*n_vocab*ggml_type_sizef(wtype); // embed_in_wte
+        ctx_size += n_embd*n_vocab* ggml_type_sizef(wtype); // embed_out_wte
 
-        ctx_size += n_embd*n_vocab*ggml_type_sizef(wtype); // wte
+        //ctx_size += n_embd*n_vocab*ggml_type_sizef(wtype);         // final_layer_norm_w
+        //ctx_size +=        n_vocab*ggml_type_sizef(GGML_TYPE_F32); // final_layer_norm_b
+        {
+            ctx_size += n_layer*(n_embd*ggml_type_sizef(GGML_TYPE_F32)); // ln_input_norm_w
+            ctx_size += n_layer*(n_embd*ggml_type_sizef(GGML_TYPE_F32)); // ln_input_norm_b
 
-        ctx_size += n_embd*n_vocab*ggml_type_sizef(wtype);         // lmh_g
-        ctx_size +=        n_vocab*ggml_type_sizef(GGML_TYPE_F32); // lmh_b
+            ctx_size += n_layer*(n_embd*ggml_type_sizef(GGML_TYPE_F32)); // ln_post_norm_w
+            ctx_size += n_layer*(n_embd*ggml_type_sizef(GGML_TYPE_F32)); // ln_post_norm_b
 
-        ctx_size += n_layer*(n_embd*ggml_type_sizef(GGML_TYPE_F32)); // ln_1_g
-        ctx_size += n_layer*(n_embd*ggml_type_sizef(GGML_TYPE_F32)); // ln_1_b
+            ctx_size += n_layer*(4*n_embd*4*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_b
+            ctx_size += n_layer*(n_rot*ggml_type_sizef(GGML_TYPE_F32)); // rot_inv_freq
 
-        ctx_size += n_layer*(n_embd*n_embd*ggml_type_sizef(wtype)); // c_attn_q_proj_w
-        ctx_size += n_layer*(n_embd*n_embd*ggml_type_sizef(wtype)); // c_attn_k_proj_w
-        ctx_size += n_layer*(n_embd*n_embd*ggml_type_sizef(wtype)); // c_attn_v_proj_w
+            ctx_size += n_layer*(3*n_embd*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_k_v_w;
+            ctx_size += n_layer*(3*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_k_v_b;
 
-        ctx_size += n_layer*(n_embd*n_embd*ggml_type_sizef(wtype)); // c_attn_proj_w
+            // ctx_size += n_layer*(n_embd*n_embd*ggml_type_sizef(wtype)); // c_attn_dense_w
 
-        ctx_size += n_layer*(4*n_embd*n_embd*ggml_type_sizef(wtype));         // c_mlp_fc_w
-        ctx_size += n_layer*(       4*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // c_mlp_fc_b
+            ctx_size += n_layer*(n_embd*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_dense_w
+            ctx_size += n_layer*(n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_dense_b
 
-        ctx_size += n_layer*(4*n_embd*n_embd*ggml_type_sizef(wtype));         // c_mlp_proj_w
-        ctx_size += n_layer*(         n_embd*ggml_type_sizef(GGML_TYPE_F32)); // c_mlp_proj_b
+            ctx_size += n_layer*(4*n_embd*n_embd*ggml_type_sizef(wtype));         // c_mlp_h_to_4h_w
+            ctx_size += n_layer*(       4*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // c_mlp_h_to_4h_b
 
-        ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F16); // memory_k
-        ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F16); // memory_v
+            ctx_size += n_layer*(4*n_embd*n_embd*ggml_type_sizef(wtype));         // c_mlp_4h_to_h_w
+            ctx_size += n_layer*(         n_embd*ggml_type_sizef(GGML_TYPE_F32)); // c_mlp_4h_to_h_b
 
-        ctx_size += (5 + 10*n_layer)*256; // object overhead
+            ctx_size += n_layer*(n_embd*ggml_type_sizef(GGML_TYPE_F32)); // ln_post_norm_g
+            ctx_size += n_layer*(n_embd*ggml_type_sizef(GGML_TYPE_F32)); // ln_post_norm_b
+
+            ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F32); // memory_k TODO for caching??
+            ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F32); // memory_v TODO for caching??
+        }
+
+        ctx_size += n_embd* ggml_type_sizef(GGML_TYPE_F32); // output_final_layer_norm_w;
+        ctx_size += n_embd* ggml_type_sizef(GGML_TYPE_F32); // output_final_layer_norm_b;
+        ctx_size += (5 + 10*n_layer)*256*2; // object overhead
 
         printf("%s: ggml ctx size = %6.2f MB\n", __func__, ctx_size/(1024.0*1024.0));
     }
+
 
     // create the ggml context
     {
@@ -216,59 +238,76 @@ bool pythia_model_load(const std::string & fname, pythia_model & model, gpt_voca
         const int n_layer = hparams.n_layer;
         const int n_ctx   = hparams.n_ctx;
         const int n_vocab = hparams.n_vocab;
+        const int n_rot = hparams.n_rot;
 
         model.layers.resize(n_layer);
 
-        model.wte    = ggml_new_tensor_2d(ctx, wtype,         n_embd, n_vocab);
+        model.embed_in_wte    = ggml_new_tensor_2d(ctx, wtype, n_embd, n_vocab);
+        model.embed_out_wte = ggml_new_tensor_2d(ctx, wtype, n_embd, n_vocab);
 
+/*
         model.ln_f_g = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
         model.ln_f_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
+*/
 
-        model.lmh_g  = ggml_new_tensor_2d(ctx, wtype,         n_embd, n_vocab);
-        model.lmh_b  = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_vocab);
+        model.final_layer_norm_w  = ggml_new_tensor_1d(ctx, wtype, n_embd);
+        model.final_layer_norm_b  = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
 
         // map by name
-        model.tensors["transformer.wte.weight"] = model.wte;
+        model.tensors[model_prefix + "embed_in.weight"] = model.embed_in_wte;
 
-        model.tensors["transformer.ln_f.weight"] = model.ln_f_g;
-        model.tensors["transformer.ln_f.bias"]   = model.ln_f_b;
+        // TODO: this naming shall be a gpt_neox bug.
+        model.tensors["embed_out.weight"] = model.embed_out_wte;
 
-        model.tensors["lm_head.weight"] = model.lmh_g;
-        model.tensors["lm_head.bias"]   = model.lmh_b;
+        model.tensors[model_prefix + "final_layer_norm.weight"] = model.final_layer_norm_w;
+        model.tensors[model_prefix + "final_layer_norm.bias"]   = model.final_layer_norm_b;
 
         for (int i = 0; i < n_layer; ++i) {
             auto & layer = model.layers[i];
 
-            layer.ln_1_g          = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_embd);
-            layer.ln_1_b          = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_embd);
+            layer.ln_input_norm_w          = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
+            layer.ln_input_norm_b          = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
 
-            layer.c_attn_q_proj_w = ggml_new_tensor_2d(ctx, wtype,           n_embd,   n_embd);
-            layer.c_attn_k_proj_w = ggml_new_tensor_2d(ctx, wtype,           n_embd,   n_embd);
-            layer.c_attn_v_proj_w = ggml_new_tensor_2d(ctx, wtype,           n_embd,   n_embd);
+            layer.ln_post_norm_w          = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
+            layer.ln_post_norm_b          = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
 
-            layer.c_attn_proj_w   = ggml_new_tensor_2d(ctx, wtype,           n_embd,   n_embd);
+            //layer.c_attn_q_proj_w = ggml_new_tensor_2d(ctx, wtype,           n_embd,   n_embd);
+            //layer.c_attn_k_proj_w = ggml_new_tensor_2d(ctx, wtype,           n_embd,   n_embd);
+            //layer.c_attn_v_proj_w = ggml_new_tensor_2d(ctx, wtype,           n_embd,   n_embd);
+            layer.c_attn_b = ggml_new_tensor_2d(ctx, wtype, 4*n_embd, 4*n_embd);
+            layer.c_rot_inv_freq = ggml_new_tensor_1d(ctx, wtype, n_rot);
 
-            layer.c_mlp_fc_w      = ggml_new_tensor_2d(ctx, wtype,           n_embd, 4*n_embd);
-            layer.c_mlp_fc_b      = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, 4*n_embd);
+            layer.c_attn_k_v_w = ggml_new_tensor_2d(ctx, wtype, n_embd, 3*n_embd);
+            layer.c_attn_k_v_b = ggml_new_tensor_1d(ctx, wtype, 3*n_embd);
 
-            layer.c_mlp_proj_w    = ggml_new_tensor_2d(ctx, wtype,         4*n_embd,   n_embd);
-            layer.c_mlp_proj_b    = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_embd);
+            layer.c_attn_dense_w   = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd);
+            layer.c_attn_dense_b   = ggml_new_tensor_1d(ctx, wtype, n_embd);
+
+            layer.c_mlp_h_to_4h_w      = ggml_new_tensor_2d(ctx, wtype, n_embd, 4 * n_embd);
+            layer.c_mlp_h_to_4h_b      = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, 4 * n_embd);
+
+            layer.c_mlp_4h_to_h_w    = ggml_new_tensor_2d(ctx, wtype, 4 * n_embd, n_embd);
+            layer.c_mlp_4h_to_h_b    = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_embd);
 
             // map by name
-            model.tensors["transformer.h." + std::to_string(i) + ".ln_1.weight"]          = layer.ln_1_g;
-            model.tensors["transformer.h." + std::to_string(i) + ".ln_1.bias"]            = layer.ln_1_b;
+            model.tensors[layer_prefix + std::to_string(i) + ".input_layernorm.weight"]          = layer.ln_input_norm_w;
+            model.tensors[layer_prefix + std::to_string(i) + ".input_layernorm.bias"]            = layer.ln_input_norm_b;
+            model.tensors[layer_prefix + std::to_string(i) + ".post_attention_layernorm.weight"]          = layer.ln_post_norm_w;
+            model.tensors[layer_prefix + std::to_string(i) + ".post_attention_layernorm.bias"]            = layer.ln_post_norm_b;
 
-            model.tensors["transformer.h." + std::to_string(i) + ".attn.q_proj.weight"]   = layer.c_attn_q_proj_w;
-            model.tensors["transformer.h." + std::to_string(i) + ".attn.k_proj.weight"]   = layer.c_attn_k_proj_w;
-            model.tensors["transformer.h." + std::to_string(i) + ".attn.v_proj.weight"]   = layer.c_attn_v_proj_w;
+            model.tensors[layer_prefix + std::to_string(i) + ".attention.bias"]          = layer.c_attn_b;
+            model.tensors[layer_prefix + std::to_string(i) + ".attention.rotary_emb.inv_freq"]    = layer.c_rot_inv_freq;
+            model.tensors[layer_prefix + std::to_string(i) + ".attention.query_key_value.weight"]      = layer.c_attn_k_v_w;
+            model.tensors[layer_prefix + std::to_string(i) + ".attention.query_key_value.bias"]        = layer.c_attn_k_v_b;
 
-            model.tensors["transformer.h." + std::to_string(i) + ".attn.out_proj.weight"] = layer.c_attn_proj_w;
+            model.tensors[layer_prefix + std::to_string(i) + ".attention.dense.weight"] = layer.c_attn_dense_w;
+            model.tensors[layer_prefix + std::to_string(i) + ".attention.dense.bias"] = layer.c_attn_dense_b;
 
-            model.tensors["transformer.h." + std::to_string(i) + ".mlp.fc_in.weight"]     = layer.c_mlp_fc_w;
-            model.tensors["transformer.h." + std::to_string(i) + ".mlp.fc_in.bias"]       = layer.c_mlp_fc_b;
+            model.tensors[layer_prefix + std::to_string(i) + ".mlp.dense_h_to_4h.weight"]     = layer.c_mlp_h_to_4h_w;
+            model.tensors[layer_prefix + std::to_string(i) + ".mlp.dense_h_to_4h.bias"]       = layer.c_mlp_h_to_4h_b;
 
-            model.tensors["transformer.h." + std::to_string(i) + ".mlp.fc_out.weight"]    = layer.c_mlp_proj_w;
-            model.tensors["transformer.h." + std::to_string(i) + ".mlp.fc_out.bias"]      = layer.c_mlp_proj_b;
+            model.tensors[layer_prefix + std::to_string(i) + ".mlp.dense_4h_to_h.weight"]    = layer.c_mlp_4h_to_h_w;
+            model.tensors[layer_prefix + std::to_string(i) + ".mlp.dense_4h_to_h.bias"]      = layer.c_mlp_4h_to_h_b;
         }
     }
 
@@ -283,8 +322,8 @@ bool pythia_model_load(const std::string & fname, pythia_model & model, gpt_voca
         const int n_mem      = n_layer*n_ctx;
         const int n_elements = n_embd*n_mem;
 
-        model.memory_k = ggml_new_tensor_1d(ctx, GGML_TYPE_F16, n_elements);
-        model.memory_v = ggml_new_tensor_1d(ctx, GGML_TYPE_F16, n_elements);
+        model.memory_k = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_elements);
+        model.memory_v = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_elements);
 
         const size_t memory_size = ggml_nbytes(model.memory_k) + ggml_nbytes(model.memory_v);
 
@@ -323,19 +362,20 @@ bool pythia_model_load(const std::string & fname, pythia_model & model, gpt_voca
             std::string name(length, 0);
             fin.read(&name[0], length);
 
+            std::cout << "trying to load tensor " << name << std::endl;
             if (model.tensors.find(name.data()) == model.tensors.end()) {
-                fprintf(stderr, "%s: unknown tensor '%s' in model file\n", __func__, name.data());
+                std::cerr << fmt::format("{}: unknown tensor '{}' in model file\n", __func__, name.data());
                 return false;
             }
 
             auto tensor = model.tensors[name.data()];
             if (ggml_nelements(tensor) != nelements) {
-                fprintf(stderr, "%s: tensor '%s' has wrong size in model file\n", __func__, name.data());
+                std::cerr << fmt::format("{}: tensor '{}' has wrong size in model file\n", __func__, name.data());
                 return false;
             }
 
             if (tensor->ne[0] != ne[0] || tensor->ne[1] != ne[1]) {
-                fprintf(stderr, "%s: tensor '%s' has wrong shape in model file: got [%lld, %lld], expected [%lld, %lld]\n",
+                std::cerr << fmt::format("{}: tensor '{}' has wrong shape in model file: got [{}, {}], expected [{}, {}]\n",
                         __func__, name.data(), tensor->ne[0], tensor->ne[1], ne[0], ne[1]);
                 return false;
             }
@@ -354,13 +394,13 @@ bool pythia_model_load(const std::string & fname, pythia_model & model, gpt_voca
                 case 3: bpe = ggml_type_size(GGML_TYPE_Q4_1); assert(ne[0] % 64 == 0); break;
                 default:
                         {
-                            fprintf(stderr, "%s: unknown ftype %d in model file\n", __func__, ftype);
+                            std::cerr << fmt::format("{}: unknown ftype {} in model file\n", __func__, ftype);
                             return false;
                         }
-            };
+            }
 
             if ((nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)) {
-                fprintf(stderr, "%s: tensor '%s' has wrong size in model file: got %zu, expected %llu\n",
+                std::cerr << fmt::format("{}: tensor '{}' has wrong size in model file: got {}, expected {}\n",
                         __func__, name.data(), ggml_nbytes(tensor), nelements*bpe);
                 return false;
             }
@@ -443,8 +483,8 @@ bool pythia_eval(
     struct ggml_tensor * embd = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, N);
     memcpy(embd->data, embd_inp.data(), N*ggml_element_size(embd));
 
-    // wte
-    struct ggml_tensor * inpL = ggml_get_rows(ctx0, model.wte, embd);
+    // embed_in_wte
+    struct ggml_tensor * inpL = ggml_get_rows(ctx0, model.embed_in_wte, embd);
 
     for (int il = 0; il < n_layer; ++il) {
         struct ggml_tensor * cur;
@@ -453,24 +493,34 @@ bool pythia_eval(
         {
             cur = ggml_norm(ctx0, inpL);
 
-            // cur = ln_1_g*cur + ln_1_b
+            // cur = ln_input_norm_w*cur + ln_input_norm_b
             cur = ggml_add(ctx0,
                     ggml_mul(ctx0,
-                        ggml_repeat(ctx0, model.layers[il].ln_1_g, cur),
+                        ggml_repeat(ctx0, model.layers[il].ln_input_norm_w, cur),
                         cur),
-                    ggml_repeat(ctx0, model.layers[il].ln_1_b, cur));
+                    ggml_repeat(ctx0, model.layers[il].ln_input_norm_b, cur));
         }
 
         struct ggml_tensor * inpSA = cur;
 
         // self-attention
         {
-            struct ggml_tensor * Qcur = ggml_rope(ctx0, ggml_reshape_3d(ctx0, ggml_mul_mat(ctx0, model.layers[il].c_attn_q_proj_w, cur), n_embd/n_head, n_head, N), n_past, n_rot, 0);
-            struct ggml_tensor * Kcur = ggml_rope(ctx0, ggml_reshape_3d(ctx0, ggml_mul_mat(ctx0, model.layers[il].c_attn_k_proj_w, cur), n_embd/n_head, n_head, N), n_past, n_rot, 0);
+            struct ggml_tensor * Qcur = ggml_rope(
+                    ctx0,
+                    ggml_reshape_3d(ctx0,
+                                    ggml_mul_mat(ctx0, model.layers[il].c_attn_k_v_w, cur),
+                                    n_embd/n_head, n_head, N),
+                    n_past, n_rot, 0);
+            struct ggml_tensor * Kcur = ggml_rope(
+                    ctx0,
+                    ggml_reshape_3d(ctx0,
+                                    ggml_mul_mat(ctx0, model.layers[il].c_attn_k_v_w, cur),
+                                    n_embd/n_head, n_head, N),
+                    n_past, n_rot, 0);
 
             // store key and value to memory
             {
-                struct ggml_tensor * Vcur = ggml_transpose(ctx0, ggml_mul_mat(ctx0, model.layers[il].c_attn_v_proj_w, cur));
+                struct ggml_tensor * Vcur = ggml_transpose(ctx0, ggml_mul_mat(ctx0, model.layers[il].c_attn_k_v_w, cur));
 
                 struct ggml_tensor * k = ggml_view_1d(ctx0, model.memory_k, N*n_embd, (ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past));
                 struct ggml_tensor * v = ggml_view_2d(ctx0, model.memory_v, N, n_embd,
@@ -532,7 +582,7 @@ bool pythia_eval(
 
             // projection (no bias)
             cur = ggml_mul_mat(ctx0,
-                    model.layers[il].c_attn_proj_w,
+                    model.layers[il].c_attn_dense_w,
                     cur);
         }
 
@@ -543,11 +593,11 @@ bool pythia_eval(
         {
             // note here we pass inpSA instead of cur
             cur = ggml_mul_mat(ctx0,
-                    model.layers[il].c_mlp_fc_w,
+                    model.layers[il].c_mlp_h_to_4h_w,
                     inpSA);
 
             cur = ggml_add(ctx0,
-                    ggml_repeat(ctx0, model.layers[il].c_mlp_fc_b, cur),
+                    ggml_repeat(ctx0, model.layers[il].c_mlp_h_to_4h_b, cur),
                     cur);
 
             // GELU activation
@@ -556,11 +606,11 @@ bool pythia_eval(
             // projection
             // cur = proj_w*cur + proj_b
             cur = ggml_mul_mat(ctx0,
-                    model.layers[il].c_mlp_proj_w,
+                    model.layers[il].c_mlp_4h_to_h_w,
                     cur);
 
             cur = ggml_add(ctx0,
-                    ggml_repeat(ctx0, model.layers[il].c_mlp_proj_b, cur),
+                    ggml_repeat(ctx0, model.layers[il].c_mlp_4h_to_h_b, cur),
                     cur);
         }
 
@@ -575,20 +625,20 @@ bool pythia_eval(
     {
         inpL = ggml_norm(ctx0, inpL);
 
-        // inpL = ln_f_g*inpL + ln_f_b
+        /*// inpL = ln_f_g*inpL + ln_f_b
         inpL = ggml_add(ctx0,
                 ggml_mul(ctx0,
                     ggml_repeat(ctx0, model.ln_f_g, inpL),
                     inpL),
-                ggml_repeat(ctx0, model.ln_f_b, inpL));
+                ggml_repeat(ctx0, model.ln_f_b, inpL));*/
     }
 
     // lm_head
     {
-        inpL = ggml_mul_mat(ctx0, model.lmh_g, inpL);
+        inpL = ggml_mul_mat(ctx0, model.final_layer_norm_w, inpL);
 
         inpL = ggml_add(ctx0,
-                ggml_repeat(ctx0, model.lmh_b, inpL),
+                ggml_repeat(ctx0, model.final_layer_norm_b, inpL),
                 inpL);
     }
 

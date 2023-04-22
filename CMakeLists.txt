@@ -146,5 +146,6 @@ target_link_libraries(quantize PRIVATE Drogon::Drogon)
 target_link_libraries(llama PRIVATE ggml)
 target_link_libraries(llama PRIVATE fmt::fmt)
 target_link_libraries(pythia PRIVATE ggml)
+target_link_libraries(pythia PRIVATE fmt::fmt)
 
 target_link_libraries(ggml PRIVATE Threads::Threads)

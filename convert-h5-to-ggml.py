@@ -25,6 +25,8 @@ import numpy as np
 
 from transformers import GPTJForCausalLM, GPTNeoXForCausalLM, AutoTokenizer
 
+ftype = 0
+
 # ref: https://github.com/openai/gpt-2/blob/master/src/encoder.py
 def bytes_to_unicode():
     """
@@ -99,8 +101,8 @@ try:
 except OSError:
     pass
 
-# vocab = tokenizer.vocab
-ftype = 1
+model.resize_token_embeddings(len(vocab))
+
 fout = open(fname_out, "wb")
 
 fout.write(struct.pack("i", 0x67676d6c)) # magic: ggml in hex
@@ -150,6 +152,8 @@ list_vars = model.state_dict()
 
 for name in list_vars.keys():
     data = list_vars[name].squeeze().numpy()
+    if "masked_bias" in name:
+        continue
     print("Processing variable: " + name + " with shape: ", data.shape)
 
     # we don't need these
