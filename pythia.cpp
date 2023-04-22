@@ -380,11 +380,6 @@ bool pythia_model_load(const std::string & fname, pythia_model & model, gpt_voca
                 return false;
             }
 
-            if (0) {
-                static const char * ftype_str[] = { "f32", "f16", "q4_0", "q4_1", };
-                printf("%24s - [%5lld, %5lld], type = %6s, %6.2f MB, %9zu bytes\n", name.data(), ne[0], ne[1], ftype_str[ftype], ggml_nbytes(tensor)/1024.0/1024.0, ggml_nbytes(tensor));
-            }
-
             size_t bpe = 0;
 
             switch (ftype) {
@@ -478,7 +473,7 @@ bool pythia_eval(
     };
 
     struct ggml_context * ctx0 = ggml_init(params);
-    struct ggml_cgraph gf = { .n_threads = n_threads };
+    struct ggml_cgraph gf = { .n_threads = n_threads }; //TODO: thread 1 first for safety.
 
     struct ggml_tensor * embd = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, N);
     memcpy(embd->data, embd_inp.data(), N*ggml_element_size(embd));
@@ -505,6 +500,22 @@ bool pythia_eval(
 
         // self-attention
         {
+            auto qkv = ggml_mul_mat(ctx0, model.layers[il].c_attn_k_v_w, inpSA);
+            auto qkv_b = ggml_repeat(ctx0, model.layers[il].c_attn_k_v_b, qkv);
+            qkv = ggml_add(ctx0,  qkv, qkv_b);
+
+            // TODO: directly slicing, ugly, and problematic.
+            auto new_qkv = ggml_reshape_3d(ctx0, qkv, n_embd*3/n_head, n_head, N);
+            auto q = ggml_view_3d(ctx0, new_qkv, n_embd/n_head, n_head, N,
+                                  n_ctx*(new_qkv->ne[0])/3, n_ctx*(new_qkv->ne[0])/3*n_head,
+                                  0);
+            auto k = ggml_view_3d(ctx0, new_qkv, n_embd/n_head, n_head, N,
+                                  n_ctx*(new_qkv->ne[0])/3, n_ctx*(new_qkv->ne[0])/3*n_head,
+                                  new_qkv->ne[3]* ggml_element_size(new_qkv));
+            auto v = ggml_view_3d(ctx0, new_qkv, n_embd/n_head, n_head, N,
+                                  n_ctx*(new_qkv->ne[0])/3, n_ctx*(new_qkv->ne[0])/3*n_head,
+                                  2*new_qkv->ne[3]* ggml_element_size(new_qkv));
+
             struct ggml_tensor * Qcur = ggml_rope(
                     ctx0,
                     ggml_reshape_3d(ctx0,
@@ -671,6 +682,8 @@ bool pythia_eval(
     return true;
 }
 
+std::string default_prompts = "Hello, I am";
+
 int main(int argc, char ** argv) {
     const int64_t t_main_start_us = ggml_time_us();
 
@@ -695,7 +708,7 @@ int main(int argc, char ** argv) {
                 params.prompt = params.prompt + "\n" + line;
             }
         } else {
-            params.prompt = gpt_random_prompt(rng);
+            params.prompt = default_prompts;
         }
     }
 
