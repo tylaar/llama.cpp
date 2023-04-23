@@ -124,6 +124,10 @@ add_executable(llama
         llama.cpp
         utils.h llama_load.cpp llama_eval.cpp llama_context.cpp llama_context.h llama_loader.cpp llama_loader.h llama_loader.h llama_memory_mapper.cpp llama_memory_mapper.h)
 
+add_executable(mnist
+        mnist.cpp
+        utils.cpp utils.h)
+
 add_executable(quantize
     quantize.cpp
     utils.cpp
@@ -137,6 +141,7 @@ target_compile_definitions(ggml PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_compile_definitions(llama PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_compile_definitions(pythia PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_compile_definitions(quantize PUBLIC ${LLAMA_EXTRA_FLAGS})
+target_compile_definitions(mnist PUBLIC ${LLAMA_EXTRA_FLAGS})
 
 target_link_libraries(ggml PRIVATE ${LLAMA_EXTRA_LIBS})
 target_include_directories(ggml PUBLIC .)
@@ -147,5 +152,7 @@ target_link_libraries(llama PRIVATE ggml)
 target_link_libraries(llama PRIVATE fmt::fmt)
 target_link_libraries(pythia PRIVATE ggml)
 target_link_libraries(pythia PRIVATE fmt::fmt)
+target_link_libraries(mnist PRIVATE ggml)
+target_link_libraries(mnist PRIVATE fmt::fmt)
 
 target_link_libraries(ggml PRIVATE Threads::Threads)
