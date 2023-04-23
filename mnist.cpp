@@ -175,6 +175,16 @@ int mnist_eval(
     struct ggml_context * ctx0 = ggml_init(params);
     struct ggml_cgraph gf = { .n_threads = n_threads };
 
+    // below are debugging purpose for pytorch shape 500*10, and ggml 500*10*1*1 tensor.
+    auto f2_1d_0 = ggml_view_1d(ctx0, model.fc2_weight, model.hparams.n_hidden, 0);
+    std::cout << "f2_weight_1d_1_0: " << ggml_get_f32_1d(f2_1d_0, 0) << std::endl; // equal to pytorch f2_weight[0][0]
+    auto f2_1d_1 = ggml_view_1d(ctx0, model.fc2_weight, model.hparams.n_hidden, model.hparams.n_hidden*ggml_element_size(model.fc2_weight));
+    std::cout << "f2_weight_1d_2_0: " << ggml_get_f32_1d(f2_1d_1, 0) << std::endl; // equal to pytorch f2_weight[1][0]
+    auto f2_1d_9 = ggml_view_1d(ctx0, model.fc2_weight, model.hparams.n_hidden, 9*model.hparams.n_hidden*ggml_element_size(model.fc2_weight));
+    std::cout << "f2_weight_1d_9_0: " << ggml_get_f32_1d(f2_1d_9, 0) << std::endl; // equal to pytorch f2_weight[9][0]
+    auto f2_1d_5 = ggml_view_1d(ctx0, model.fc2_weight, model.hparams.n_hidden, 5*model.hparams.n_hidden* ggml_element_size(model.fc2_weight));
+    std::cout << "f2_weight_1d_5_250: " << ggml_get_f32_1d(f2_1d_5, 250) << std::endl; // equal to pytorch f2_weight[5][250]
+
     struct ggml_tensor * input = ggml_new_tensor_1d(ctx0, GGML_TYPE_F32, hparams.n_input);
     memcpy(input->data, digit.data(), ggml_nbytes(input));
 

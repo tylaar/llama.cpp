@@ -34,10 +34,19 @@ state_dict = torch.load(state_dict_file, map_location=torch.device('cpu'))
 list_vars = state_dict
 print (list_vars)
 
+fc2_weight = state_dict['fc2.weight']
+print('0_0', fc2_weight[0][0])
+print('1_0', fc2_weight[1][0])
+print('9_0', fc2_weight[9][0])
+print('0_1', fc2_weight[0][1])
+print('0_9', fc2_weight[0][9])
+print('5_250', fc2_weight[5][250])
+
+print('debug finished')
+
 fout = open(fname_out, "wb")
 
 fout.write(struct.pack("i", 0x67676d6c)) # magic: ggml in hex
-
 
 for name in list_vars.keys():
     data = list_vars[name].squeeze().numpy()
