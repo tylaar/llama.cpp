@@ -63,10 +63,10 @@ state_dict["embd_out"] = np.array(
 
 state_dict["c_attn_k_v_w"] = np.array(
     [
-        np.arange(-0.1, -0.22, -0.01),
-        np.arange(-0.2, -0.32, -0.01),
-        np.arange(-0.3, -0.42, -0.01),
-        np.arange(-0.4, -0.52, -0.01),
+        np.arange(0.1, 0.22, 0.01),
+        np.arange(0.2, 0.32, 0.01),
+        np.arange(0.3, 0.42, 0.01),
+        np.arange(0.4, 0.52, 0.01),
     ]
 ).transpose()
 state_dict["c_attn_k_v_b"] = np.arange(0.0, 0.12, 0.01).transpose()

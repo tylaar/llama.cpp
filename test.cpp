@@ -405,16 +405,12 @@ bool eval(
             std::cout << "current q nelements:" << ggml_nelements(q) <<  " k nelem: " << ggml_nelements(k) << " v nelems:" << ggml_nelements(v) << std::endl;
             assert(ggml_nelements(new_qkv) != (ggml_nelements(q) + ggml_nelements(k) + ggml_element_size(v)));
 
-            struct ggml_tensor * Qcur = ggml_reshape_3d(ctx0,
-                                    ggml_mul_mat(ctx0, q, cur),
-                                    n_embd/n_head, n_head, N);
-            struct ggml_tensor * Kcur = ggml_reshape_3d(ctx0,
-                                    ggml_mul_mat(ctx0, k, cur),
-                                    n_embd/n_head, n_head, N);
+            struct ggml_tensor * Qcur = q;
+            struct ggml_tensor * Kcur = k;
 
             // store key and value to memory
             {
-                struct ggml_tensor * Vcur = ggml_transpose(ctx0, ggml_mul_mat(ctx0, v, cur));
+                struct ggml_tensor * Vcur = ggml_transpose(ctx0, v);
 
                 struct ggml_tensor * k = ggml_view_1d(ctx0, model.memory_k, N*n_embd, (ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past));
                 struct ggml_tensor * v = ggml_view_2d(ctx0, model.memory_v, N, n_embd,
