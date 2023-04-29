@@ -118,6 +118,11 @@ add_executable(pythia
         pythia.cpp
         utils.cpp utils.h)
 
+
+add_executable(test
+        test.cpp
+        utils.cpp utils.h)
+
 add_executable(llama
         main.cpp
         utils.cpp
@@ -140,6 +145,7 @@ add_library(ggml
 target_compile_definitions(ggml PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_compile_definitions(llama PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_compile_definitions(pythia PUBLIC ${LLAMA_EXTRA_FLAGS})
+target_compile_definitions(test PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_compile_definitions(quantize PUBLIC ${LLAMA_EXTRA_FLAGS})
 target_compile_definitions(mnist PUBLIC ${LLAMA_EXTRA_FLAGS})
 
@@ -154,5 +160,8 @@ target_link_libraries(pythia PRIVATE ggml)
 target_link_libraries(pythia PRIVATE fmt::fmt)
 target_link_libraries(mnist PRIVATE ggml)
 target_link_libraries(mnist PRIVATE fmt::fmt)
+target_link_libraries(test PRIVATE ggml)
+target_link_libraries(test PRIVATE fmt::fmt)
+
 
 target_link_libraries(ggml PRIVATE Threads::Threads)

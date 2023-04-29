@@ -149,11 +149,11 @@ bool pythia_model_load(const std::string & fname, pythia_model & model, gpt_voca
         case 2: wtype = GGML_TYPE_Q4_0; break;
         case 3: wtype = GGML_TYPE_Q4_1; break;
         default:
-                {
-                    fprintf(stderr, "%s: invalid model file '%s' (bad f16 value %d)\n",
-                            __func__, fname.c_str(), model.hparams.f16);
-                    return false;
-                }
+        {
+            fprintf(stderr, "%s: invalid model file '%s' (bad f16 value %d)\n",
+                    __func__, fname.c_str(), model.hparams.f16);
+            return false;
+        }
     }
 
     const ggml_type wtype2 = GGML_TYPE_F32;
@@ -376,7 +376,7 @@ bool pythia_model_load(const std::string & fname, pythia_model & model, gpt_voca
 
             if (tensor->ne[0] != ne[0] || tensor->ne[1] != ne[1]) {
                 std::cerr << fmt::format("{}: tensor '{}' has wrong shape in model file: got [{}, {}], expected [{}, {}]\n",
-                        __func__, name.data(), tensor->ne[0], tensor->ne[1], ne[0], ne[1]);
+                                         __func__, name.data(), tensor->ne[0], tensor->ne[1], ne[0], ne[1]);
                 return false;
             }
 
@@ -388,15 +388,15 @@ bool pythia_model_load(const std::string & fname, pythia_model & model, gpt_voca
                 case 2: bpe = ggml_type_size(GGML_TYPE_Q4_0); assert(ne[0] % 64 == 0); break;
                 case 3: bpe = ggml_type_size(GGML_TYPE_Q4_1); assert(ne[0] % 64 == 0); break;
                 default:
-                        {
-                            std::cerr << fmt::format("{}: unknown ftype {} in model file\n", __func__, ftype);
-                            return false;
-                        }
+                {
+                    std::cerr << fmt::format("{}: unknown ftype {} in model file\n", __func__, ftype);
+                    return false;
+                }
             }
 
             if ((nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)) {
                 std::cerr << fmt::format("{}: tensor '{}' has wrong size in model file: got {}, expected {}\n",
-                        __func__, name.data(), ggml_nbytes(tensor), nelements*bpe);
+                                         __func__, name.data(), ggml_nbytes(tensor), nelements*bpe);
                 return false;
             }
 
@@ -467,9 +467,9 @@ bool pythia_eval(
     }
 
     struct ggml_init_params params = {
-        .mem_size   = buf_size,
-        .mem_buffer = buf,
-        .no_alloc   = false,
+            .mem_size   = buf_size,
+            .mem_buffer = buf,
+            .no_alloc   = false,
     };
 
     struct ggml_context * ctx0 = ggml_init(params);
@@ -490,12 +490,13 @@ bool pythia_eval(
 
             // cur = ln_input_norm_w*cur + ln_input_norm_b
             cur = ggml_add(ctx0,
-                    ggml_mul(ctx0,
-                        ggml_repeat(ctx0, model.layers[il].ln_input_norm_w, cur),
-                        cur),
-                    ggml_repeat(ctx0, model.layers[il].ln_input_norm_b, cur));
+                           ggml_mul(ctx0,
+                                    ggml_repeat(ctx0, model.layers[il].ln_input_norm_w, cur),
+                                    cur),
+                           ggml_repeat(ctx0, model.layers[il].ln_input_norm_b, cur));
         }
 
+        // Notice here we bypass out the cur pointer to inpSA for possible residual possibility
         struct ggml_tensor * inpSA = cur;
 
         // self-attention
@@ -506,15 +507,25 @@ bool pythia_eval(
 
             // TODO: directly slicing, ugly, and problematic.
             auto new_qkv = ggml_reshape_3d(ctx0, qkv, n_embd*3/n_head, n_head, N);
-            auto q = ggml_view_3d(ctx0, new_qkv, n_embd/n_head, n_head, N,
+            // auto sum = ggml_sum(ctx0, new_qkv);
+            auto jump_type_size = ggml_element_size(new_qkv);
+            auto jump_unit_size = new_qkv->ne[0] * new_qkv->ne[1] * new_qkv->ne[2] / 3;
+            auto offset_unit = jump_type_size * jump_unit_size;
+            std::cout << "jump unit_size:" << jump_unit_size << " and jump type size: " << jump_type_size << " and offset unit: "<< offset_unit << std::endl;
+            auto q = ggml_view_3d(ctx0, new_qkv,
+                                  n_embd/n_head, n_head, N,
                                   n_ctx*(new_qkv->ne[0])/3, n_ctx*(new_qkv->ne[0])/3*n_head,
                                   0);
-            auto k = ggml_view_3d(ctx0, new_qkv, n_embd/n_head, n_head, N,
+            auto k = ggml_view_3d(ctx0, new_qkv,
+                                  n_embd/n_head, n_head, N,
                                   n_ctx*(new_qkv->ne[0])/3, n_ctx*(new_qkv->ne[0])/3*n_head,
-                                  new_qkv->ne[3]* ggml_element_size(new_qkv));
-            auto v = ggml_view_3d(ctx0, new_qkv, n_embd/n_head, n_head, N,
+                                  1 * offset_unit);
+            auto v = ggml_view_3d(ctx0, new_qkv,
+                                  n_embd/n_head, n_head, N,
                                   n_ctx*(new_qkv->ne[0])/3, n_ctx*(new_qkv->ne[0])/3*n_head,
-                                  2*new_qkv->ne[3]* ggml_element_size(new_qkv));
+                                  2 * offset_unit);
+            std::cout << "current q nelements:" << ggml_nelements(q) <<  " k nelem: " << ggml_nelements(k) << " v nelems:" << ggml_nelements(v) << std::endl;
+            assert(ggml_nelements(new_qkv) != (ggml_nelements(q) + ggml_nelements(k) + ggml_element_size(v)));
 
             struct ggml_tensor * Qcur = ggml_rope(
                     ctx0,
@@ -535,8 +546,8 @@ bool pythia_eval(
 
                 struct ggml_tensor * k = ggml_view_1d(ctx0, model.memory_k, N*n_embd, (ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past));
                 struct ggml_tensor * v = ggml_view_2d(ctx0, model.memory_v, N, n_embd,
-                        (   n_ctx)*ggml_element_size(model.memory_v),
-                        (il*n_ctx)*ggml_element_size(model.memory_v)*n_embd + n_past*ggml_element_size(model.memory_v));
+                                                      (   n_ctx)*ggml_element_size(model.memory_v),
+                                                      (il*n_ctx)*ggml_element_size(model.memory_v)*n_embd + n_past*ggml_element_size(model.memory_v));
 
                 ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
                 ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
@@ -544,27 +555,27 @@ bool pythia_eval(
 
             // Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
             struct ggml_tensor * Q =
-                ggml_permute(ctx0,
-                        Qcur,
-                        0, 2, 1, 3);
+                    ggml_permute(ctx0,
+                                 Qcur,
+                                 0, 2, 1, 3);
 
             // K = Kmem.view(n_embd/n_head, n_head, n_past + N).permute(0, 2, 1, 3)
             struct ggml_tensor * K =
-                ggml_permute(ctx0,
-                        ggml_reshape_3d(ctx0,
-                            ggml_view_1d(ctx0, model.memory_k, (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_k)*n_embd),
-                            n_embd/n_head, n_head, n_past + N),
-                        0, 2, 1, 3);
+                    ggml_permute(ctx0,
+                                 ggml_reshape_3d(ctx0,
+                                                 ggml_view_1d(ctx0, model.memory_k, (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_k)*n_embd),
+                                                 n_embd/n_head, n_head, n_past + N),
+                                 0, 2, 1, 3);
 
             // K * Q
             struct ggml_tensor * KQ = ggml_mul_mat(ctx0, K, Q);
 
             // KQ_scaled = KQ / sqrt(n_embd/n_head)
             struct ggml_tensor * KQ_scaled =
-                ggml_scale(ctx0,
-                        KQ,
-                        ggml_new_f32(ctx0, 1.0f/sqrt(float(n_embd)/n_head))
-                        );
+                    ggml_scale(ctx0,
+                               KQ,
+                               ggml_new_f32(ctx0, 1.0f/sqrt(float(n_embd)/n_head))
+                    );
 
             // KQ_masked = mask_past(KQ_scaled)
             struct ggml_tensor * KQ_masked = ggml_diag_mask_inf(ctx0, KQ_scaled, n_past);
@@ -574,11 +585,11 @@ bool pythia_eval(
 
             // V_trans = Vmem.view(n_embd/n_head, n_head, n_past + N).permute(1, 2, 0, 3).contiguous()
             struct ggml_tensor * V =
-                ggml_view_3d(ctx0, model.memory_v,
-                        n_past + N, n_embd/n_head, n_head,
-                        n_ctx*ggml_element_size(model.memory_v),
-                        n_ctx*ggml_element_size(model.memory_v)*n_embd/n_head,
-                        il*n_ctx*ggml_element_size(model.memory_v)*n_embd);
+                    ggml_view_3d(ctx0, model.memory_v,
+                                 n_past + N, n_embd/n_head, n_head,
+                                 n_ctx*ggml_element_size(model.memory_v),
+                                 n_ctx*ggml_element_size(model.memory_v)*n_embd/n_head,
+                                 il*n_ctx*ggml_element_size(model.memory_v)*n_embd);
 
             // KQV = transpose(V) * KQ_soft_max
             struct ggml_tensor * KQV = ggml_mul_mat(ctx0, V, KQ_soft_max);
@@ -588,13 +599,13 @@ bool pythia_eval(
 
             // cur = KQV_merged.contiguous().view(n_embd, N)
             cur = ggml_cpy(ctx0,
-                    KQV_merged,
-                    ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_embd, N));
+                           KQV_merged,
+                           ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_embd, N));
 
             // projection (no bias)
             cur = ggml_mul_mat(ctx0,
-                    model.layers[il].c_attn_dense_w,
-                    cur);
+                               model.layers[il].c_attn_dense_w,
+                               cur);
         }
 
         struct ggml_tensor * inpFF = cur;
@@ -604,12 +615,12 @@ bool pythia_eval(
         {
             // note here we pass inpSA instead of cur
             cur = ggml_mul_mat(ctx0,
-                    model.layers[il].c_mlp_h_to_4h_w,
-                    inpSA);
+                               model.layers[il].c_mlp_h_to_4h_w,
+                               inpSA);
 
             cur = ggml_add(ctx0,
-                    ggml_repeat(ctx0, model.layers[il].c_mlp_h_to_4h_b, cur),
-                    cur);
+                           ggml_repeat(ctx0, model.layers[il].c_mlp_h_to_4h_b, cur),
+                           cur);
 
             // GELU activation
             cur = ggml_gelu(ctx0, cur);
@@ -617,12 +628,12 @@ bool pythia_eval(
             // projection
             // cur = proj_w*cur + proj_b
             cur = ggml_mul_mat(ctx0,
-                    model.layers[il].c_mlp_4h_to_h_w,
-                    cur);
+                               model.layers[il].c_mlp_4h_to_h_w,
+                               cur);
 
             cur = ggml_add(ctx0,
-                    ggml_repeat(ctx0, model.layers[il].c_mlp_4h_to_h_b, cur),
-                    cur);
+                           ggml_repeat(ctx0, model.layers[il].c_mlp_4h_to_h_b, cur),
+                           cur);
         }
 
         // self-attention + FF

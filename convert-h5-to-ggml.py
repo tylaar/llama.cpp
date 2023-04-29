@@ -112,9 +112,9 @@ vocab_size = len(vocab)
 print('vocab_size:', vocab_size)
 fout.write(struct.pack("i", vocab_size))
 
-n_head = hparams['num_attention_heads']
-print('n_head:', n_head)
-fout.write(struct.pack("i", n_head))
+n_ctx = hparams['max_position_embeddings']
+print('n_ctx:', n_ctx)
+fout.write(struct.pack("i", n_ctx))
 
 n_embd = hparams['hidden_size']
 print('n_embd:', n_embd)
