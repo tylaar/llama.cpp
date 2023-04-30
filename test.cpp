@@ -381,26 +381,28 @@ bool eval(
             auto qkv = ggml_mul_mat(ctx0, model.layers[il].c_attn_k_v_w, inpSA);
             auto qkv_b = ggml_repeat(ctx0, model.layers[il].c_attn_k_v_b, qkv);
             qkv = ggml_add(ctx0,  qkv, qkv_b);
-
-            // TODO: directly slicing, ugly, and problematic.
-            auto new_qkv = ggml_reshape_3d(ctx0, qkv, n_embd*3/n_head, n_head, N);
-            // auto sum = ggml_sum(ctx0, new_qkv);
-            auto jump_type_size = ggml_element_size(new_qkv);
-            auto jump_unit_size = new_qkv->ne[0] * new_qkv->ne[1] * new_qkv->ne[2] / 3;
+            auto jump_type_size = ggml_element_size(qkv);
+            auto jump_unit_size = qkv->ne[0] * qkv->ne[1] / 3;
             auto offset_unit = jump_type_size * jump_unit_size;
             std::cout << "jump unit_size:" << jump_unit_size << " and jump type size: " << jump_type_size << " and offset unit: "<< offset_unit << std::endl;
-            auto q = ggml_view_3d(ctx0, new_qkv,
-                                  n_embd/n_head, n_head, N,
-                                  n_ctx*(new_qkv->ne[0])/3, n_ctx*(new_qkv->ne[0])/3*n_head,
+
+            auto q = ggml_view_2d(ctx0, qkv,
+                                  4, 4,
+                                  4 * 4,
                                   0);
-            auto k = ggml_view_3d(ctx0, new_qkv,
-                                  n_embd/n_head, n_head, N,
-                                  n_ctx*(new_qkv->ne[0])/3, n_ctx*(new_qkv->ne[0])/3*n_head,
-                                  1 * offset_unit);
-            auto v = ggml_view_3d(ctx0, new_qkv,
-                                  n_embd/n_head, n_head, N,
-                                  n_ctx*(new_qkv->ne[0])/3, n_ctx*(new_qkv->ne[0])/3*n_head,
-                                  2 * offset_unit);
+            auto k = ggml_view_2d(ctx0, qkv,
+                                  4, 4,
+                                  4 * 4,
+                                  1*offset_unit);
+
+            auto v = ggml_view_2d(ctx0, qkv,
+                                  4, 4,
+                                  4 * 4,
+                                  2*offset_unit);
+
+            // TODO: directly slicing, ugly, and problematic.
+            auto new_qkv = ggml_reshape_3d(ctx0, qkv, 3*n_embd/n_head, n_head, N);
+            // auto sum = ggml_sum(ctx0, new_qkv);
             //debug_print_tensor(q);
             //debug_print_tensor(k);
             //debug_print_tensor(v);
