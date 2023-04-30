@@ -383,6 +383,8 @@ struct ggml_tensor * ggml_new_tensor_4d(
         int64_t ne2,
         int64_t ne3);
 
+void debug_print_tensor(struct ggml_tensor* target);
+
 struct ggml_tensor * ggml_new_i32(struct ggml_context * ctx, int32_t value);
 struct ggml_tensor * ggml_new_f32(struct ggml_context * ctx, float value);
 

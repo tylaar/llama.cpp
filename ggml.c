@@ -552,6 +552,54 @@ static void quantize_row_q4_0_reference(const float * restrict x, block_q4_0 * r
         memcpy(y[i].qs, pp, sizeof(pp));
     }
 }
+static void debug_print_tensor_2d(struct ggml_tensor* target) {
+    int type_size = ggml_type_sizef(target->type);
+    fprintf(stderr, "[2D matrix] m_dim_0=%d, m_dim_1=%d type_size=%d\n", target->ne[0], target->ne[1], type_size);
+    for (int i = 0 ; i < target->ne[0]; i++) {
+        fprintf(stderr, "\n[");
+        for (int j = 0 ; j < target->ne[1]; j++) {
+            fprintf(stderr, "%f ", *(float*)((char*)target->data + i*target->nb[0]*type_size + j*type_size));
+        }
+        fprintf(stderr, "]\n");
+    }
+    fprintf(stderr, "2D matrix print done.\n");
+
+}
+static void debug_print_tensor_3d(struct ggml_tensor* target) {
+    int type_size = ggml_type_sizef(target->type);
+    fprintf(stderr, "[3D matrix] m_dim_0=%d, m_dim_1=%d, m_dim_2=%d, type_size=%d\n", target->ne[0], target->ne[1], target->ne[2], type_size);
+    for (int i = 0 ; i < target->ne[0]; i++) {
+        fprintf(stderr, "    [\n");
+        for (int j = 0 ; j < target->ne[1]; j++) {
+            for (int k = 0 ; k < target->ne[2]; k++) {
+                fprintf(stderr, "        ");
+                fprintf(stderr, "%f ", *(float*)((char*)target->data + i*target->nb[0]*type_size + j*target->ne[1] * type_size + k*type_size));
+            }
+        }
+        fprintf(stderr, "    \n]\n");
+    }
+    fprintf(stderr, "3D matrix print done.\n");
+
+}
+
+void debug_print_tensor(struct ggml_tensor* target) {
+    if (target->type != GGML_TYPE_F32) {
+        fprintf(stderr, "[DEBUG] not supporting type %d", target->type);
+        return;
+    }
+    if (target->n_dims > 3) {
+        fprintf(stderr, "[DEBUG] currently only support 2 dim matrix");
+        return;
+    }
+
+    int type_size = ggml_type_sizef(target->type);
+    if (target->n_dims == 2) {
+        debug_print_tensor_2d(target);
+    } else if (target->n_dims == 3) {
+        debug_print_tensor_3d(target);
+    }
+}
+
 
 static void quantize_row_q4_0(const float * restrict x, void * restrict vy, int k) {
     assert(k % QK == 0);
@@ -1721,7 +1769,7 @@ inline static void ggml_vec_neg_f32 (const int n, float * y, const float * x)   
 inline static void ggml_vec_mul_f32 (const int n, float * z, const float * x, const float * y) { for (int i = 0; i < n; ++i) z[i]  = x[i]*y[i];   }
 inline static void ggml_vec_div_f32 (const int n, float * z, const float * x, const float * y) { for (int i = 0; i < n; ++i) z[i]  = x[i]/y[i];   }
 
-inline static void ggml_vec_dot_f32(const int n, float * restrict s, const float * restrict x, const float * restrict y) {
+inline static ggml_float ggml_vec_dot_f32(const int n, float * restrict s, const float * restrict x, const float * restrict y) {
 #ifdef GGML_SIMD
     float sumf = 0.0f;
     const int np = (n & ~(GGML_F32_STEP - 1));
@@ -1745,7 +1793,9 @@ inline static void ggml_vec_dot_f32(const int n, float * restrict s, const float
 
     // leftovers
     for (int i = np; i < n; ++i) {
-        sumf += x[i]*y[i];
+        double res = x[i]*y[i];
+        fprintf(stderr, "x[%d](%f) * y[%d](%f) = %f\n", i, x[i], i, y[i], res);
+        sumf += res;
     }
 #else
     // scalar
@@ -1756,6 +1806,7 @@ inline static void ggml_vec_dot_f32(const int n, float * restrict s, const float
 #endif
 
     *s = sumf;
+    return sumf;
 }
 
 #if __AVX512F__ && QK == 32
@@ -1789,7 +1840,7 @@ static inline __m512 dot_q4_0_oneblock_avx512(
 }
 #endif
 
-inline static void ggml_vec_dot_f16(const int n, float * restrict s, ggml_fp16_t * restrict x, ggml_fp16_t * restrict y) {
+inline static ggml_float ggml_vec_dot_f16(const int n, float * restrict s, ggml_fp16_t * restrict x, ggml_fp16_t * restrict y) {
     ggml_float sumf = 0.0;
 
 #if defined(GGML_SIMD)
@@ -4546,6 +4597,7 @@ struct ggml_tensor * ggml_view_3d(
     result->src0 = a;
     result->src1 = NULL; // TODO: maybe store the offset here?
 
+    debug_print_tensor(result);
     return result;
 }
 
@@ -6353,12 +6405,14 @@ static void ggml_compute_forward_mul_mat_f32(
             const int i2 = i02;
             const int i3 = i03;
 
-            ggml_vec_dot_f32(ne00,
+            double debug_res = ggml_vec_dot_f32(ne00,
                              (float *) ((char *)  dst->data + (i0*nb0 + i1*nb1 + i2*nb2 + i3*nb3)),
                              (float *) ((char *) src0->data + (i01*nb01 + i02*nb02 + i03*nb03)),
                              (float *) ((char *) src1->data + (i11*nb11 + i12*nb12 + i13*nb13)));
+            fprintf(stderr, "[%d][%d] debug inside res: %f\n", ir, ic, debug_res);
         }
     }
+    debug_print_tensor(dst);
 
     //int64_t t1 = ggml_perf_time_us();
     //static int64_t acc = 0;

@@ -360,8 +360,7 @@ bool eval(
     for (int il = 0; il < n_layer; ++il) {
         struct ggml_tensor * cur = inpL;
 
-/*
-        // norm
+/* TODO Pending to test norm.
         {
             cur = ggml_norm(ctx0, inpL);
 
@@ -402,7 +401,12 @@ bool eval(
                                   n_embd/n_head, n_head, N,
                                   n_ctx*(new_qkv->ne[0])/3, n_ctx*(new_qkv->ne[0])/3*n_head,
                                   2 * offset_unit);
+            ggml_build_forward_expand(&gf, q);
+            ggml_build_forward_expand(&gf, k);
+            ggml_build_forward_expand(&gf, v);
+
             std::cout << "current q nelements:" << ggml_nelements(q) <<  " k nelem: " << ggml_nelements(k) << " v nelems:" << ggml_nelements(v) << std::endl;
+/* TODO: do that later.
             assert(ggml_nelements(new_qkv) != (ggml_nelements(q) + ggml_nelements(k) + ggml_element_size(v)));
 
             struct ggml_tensor * Qcur = q;
@@ -469,6 +473,7 @@ bool eval(
             cur = ggml_cpy(ctx0,
                            KQV_merged,
                            ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_embd, N));
+*/
         }
 
         struct ggml_tensor * inpFF = cur;
@@ -502,10 +507,10 @@ bool eval(
 */
 
         // self-attention + FF
-        cur  = ggml_add(ctx0, cur, inpFF);
+        //cur  = ggml_add(ctx0, cur, inpFF);
 
         // input for next layer
-        inpL = ggml_add(ctx0, cur, inpL);
+        //inpL = ggml_add(ctx0, cur, inpL);
     }
 
     // run the computation
