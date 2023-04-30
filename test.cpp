@@ -401,6 +401,9 @@ bool eval(
                                   n_embd/n_head, n_head, N,
                                   n_ctx*(new_qkv->ne[0])/3, n_ctx*(new_qkv->ne[0])/3*n_head,
                                   2 * offset_unit);
+            //debug_print_tensor(q);
+            //debug_print_tensor(k);
+            //debug_print_tensor(v);
             ggml_build_forward_expand(&gf, q);
             ggml_build_forward_expand(&gf, k);
             ggml_build_forward_expand(&gf, v);
@@ -516,7 +519,10 @@ bool eval(
     // run the computation
     ggml_build_forward_expand(&gf, inpL);
     ggml_graph_compute       (ctx0, &gf);
-
+    //debug_print_tensor(gf.nodes[5]);
+    //debug_print_tensor(gf.nodes[6]);
+    //debug_print_tensor(gf.nodes[7]);
+    debug_print_graph(&gf);
     //if (n_past%100 == 0) {
     //    ggml_graph_print   (&gf);
     //    ggml_graph_dump_dot(&gf, NULL, "gpt-2.dot");

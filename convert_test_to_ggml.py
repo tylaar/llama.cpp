@@ -69,7 +69,7 @@ state_dict["c_attn_k_v_w"] = np.array(
         np.arange(0.4, 0.52, 0.01),
     ]
 ).transpose()
-state_dict["c_attn_k_v_b"] = np.arange(0.0, 0.12, 0.01).transpose()
+state_dict["c_attn_k_v_b"] = np.arange(0.0, 0.000012, 0.000001).transpose()
 
 list_vars = state_dict
 
