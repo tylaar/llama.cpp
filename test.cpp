@@ -24,8 +24,16 @@ struct test_hparams {
 };
 
 struct test_layer {
-    struct ggml_tensor * c_attn_k_v_w;
-    struct ggml_tensor * c_attn_k_v_b;
+    //struct ggml_tensor * c_attn_k_v_w;
+    //struct ggml_tensor * c_attn_k_v_b;
+    ggml_tensor * c_attn_q_w;
+    ggml_tensor * c_attn_q_b;
+
+    ggml_tensor * c_attn_k_w;
+    ggml_tensor * c_attn_k_b;
+
+    ggml_tensor * c_attn_v_w;
+    ggml_tensor * c_attn_v_b;
 };
 
 struct test_model {
@@ -189,10 +197,20 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
         for (int i = 0 ; i < n_layer; i++) {
             auto & layer = model.layers[i];
 
-            layer.c_attn_k_v_w = ggml_new_tensor_2d(ctx, wtype,n_embd, 3*n_embd);
-            layer.c_attn_k_v_b = ggml_new_tensor_1d(ctx, wtype,3*n_embd);
-            model.tensors["c_attn_k_v_w"] = layer.c_attn_k_v_w;
-            model.tensors["c_attn_k_v_b"] = layer.c_attn_k_v_b;
+            layer.c_attn_q_w = ggml_new_tensor_2d(ctx, wtype,n_embd, n_embd);
+            layer.c_attn_q_b = ggml_new_tensor_1d(ctx, wtype,n_embd);
+            model.tensors["c_attn_q_w"] = layer.c_attn_q_w;
+            model.tensors["c_attn_q_b"] = layer.c_attn_q_b;
+
+            layer.c_attn_k_w = ggml_new_tensor_2d(ctx, wtype,n_embd, n_embd);
+            layer.c_attn_k_b = ggml_new_tensor_1d(ctx, wtype,n_embd);
+            model.tensors["c_attn_k_w"] = layer.c_attn_k_w;
+            model.tensors["c_attn_k_b"] = layer.c_attn_k_b;
+
+            layer.c_attn_v_w = ggml_new_tensor_2d(ctx, wtype,n_embd, n_embd);
+            layer.c_attn_v_b = ggml_new_tensor_1d(ctx, wtype,n_embd);
+            model.tensors["c_attn_v_w"] = layer.c_attn_v_w;
+            model.tensors["c_attn_v_b"] = layer.c_attn_v_b;
         }
     }
 
@@ -386,6 +404,7 @@ bool eval(
 
         // self-attention
         {
+            /*
             debug_print_tensor(model.layers[il].c_attn_k_v_w);
             debug_print_tensor(model.layers[il].c_attn_k_v_b);
             auto qkv = ggml_mul_mat(ctx0,  inpSA,  model.layers[il].c_attn_k_v_w);
@@ -411,24 +430,33 @@ bool eval(
             qkv_debug = qkv;
             qkv_t_reshaped_debug = qkv_t_reshaped;
 
+            */
+
+            auto qw = model.layers[il].c_attn_q_w;
+            auto qb = model.layers[il].c_attn_q_b;
+
+            debug_print_tensor(qw);
+            auto kw = model.layers[il].c_attn_k_w;
+            auto kb = model.layers[il].c_attn_k_b;
+            debug_print_tensor(kw);
+            auto vw = model.layers[il].c_attn_v_w;
+            auto vb = model.layers[il].c_attn_v_b;
+            debug_print_tensor(vw);
             // TODO: viewing in 3d with slicing problematic.
-            int q_type_size = ggml_type_sizef(qkv->type);
-            auto q = ggml_view_3d(ctx0, qkv_t_reshaped,
-                                  2, 2, N,
-                                  q_type_size * 2, q_type_size * 2 * 2,
-                                  0);
+            int q_type_size = ggml_type_sizef(qw->type);
+            auto q = ggml_add(ctx0,
+                              ggml_mul_mat(ctx0, qw, inpSA),
+                              ggml_repeat(ctx0, qb, qw));
 
-            auto k_type_size = ggml_type_sizef(qkv->type);
-            auto k = ggml_view_3d(ctx0, qkv_t_reshaped,
-                                  2, 2, N,
-                                  k_type_size * 2, k_type_size * 2 * 2,
-                                  1*offset_unit);
+            auto k_type_size = ggml_type_sizef(kw->type);
+            auto k = ggml_add(ctx0,
+                              ggml_mul_mat(ctx0, kw, inpSA),
+                              ggml_repeat(ctx0, kb, kw));
 
-            auto v_type_size = ggml_type_sizef(qkv->type);
-            auto v = ggml_view_3d(ctx0, qkv_t_reshaped,
-                                  2, 2, N,
-                                  v_type_size * 2, v_type_size * 2 * 2,
-                                  2*offset_unit);
+            auto v_type_size = ggml_type_sizef(vw->type);
+            auto v = ggml_add(ctx0,
+                              ggml_mul_mat(ctx0, vw, inpSA),
+                              ggml_repeat(ctx0, vb, vw));
             q_debug = q;
             k_debug = k;
             v_debug = v;
@@ -444,8 +472,8 @@ bool eval(
             //debug_print_tensor(k);
             //debug_print_tensor(v);
 
-            ggml_build_forward_expand(&gf, qkv_t);
-            ggml_build_forward_expand(&gf, qkv_t_reshaped);
+            //ggml_build_forward_expand(&gf, qkv_t);
+            //ggml_build_forward_expand(&gf, qkv_t_reshaped);
             ggml_build_forward_expand(&gf, q);
             ggml_build_forward_expand(&gf, k);
             ggml_build_forward_expand(&gf, v);
@@ -464,6 +492,7 @@ bool eval(
     //debug_print_tensor(gf.nodes[5]);
     //debug_print_tensor(gf.nodes[6]);
     //debug_print_tensor(gf.nodes[7]);
+/*
     std::cout << "==========qkv_debug_printing=============" << std::endl;
     debug_print_tensor(qkv_debug);
     std::cout << "==========qkv_debug_printend=============" << std::endl;
@@ -476,9 +505,16 @@ bool eval(
     std::cout << "==========qkv_t_reshape_debug_printend=============" << std::endl;
 
 
+*/
     std::cout << "==========query_debug_printing=============" << std::endl;
     debug_print_tensor(q_debug);
     std::cout << "==========query_debug_printend=============" << std::endl;
+    std::cout << "==========key_debug_printing=============" << std::endl;
+    debug_print_tensor(k_debug);
+    std::cout << "==========key_debug_printend=============" << std::endl;
+    std::cout << "==========value_debug_printing=============" << std::endl;
+    debug_print_tensor(v_debug);
+    std::cout << "==========value_debug_printend=============" << std::endl;
 
     //debug_print_graph_filter_type(&gf, GGML_OP_ADD);
     debug_print_graph_filter_type(&gf, GGML_OP_RESHAPE);

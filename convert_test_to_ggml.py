@@ -61,15 +61,27 @@ state_dict["embd_out"] = np.array(
         [0.37, 0.38, 0.39, 0.40],  # j
     ])
 
-state_dict["c_attn_k_v_w"] = np.array(
+c_attn_q_idx = np.array([0,1,6,7])
+c_attn_k_idx = np.array([2,3,8,9])
+c_attn_v_idx = np.array([4,5,10,11])
+
+c_attn_k_v_w = np.array(
     [
         np.arange(0.1, 0.22, 0.01),
         np.arange(0.2, 0.32, 0.01),
         np.arange(0.3, 0.42, 0.01),
         np.arange(0.4, 0.52, 0.01),
     ]
-).transpose()
-state_dict["c_attn_k_v_b"] = np.arange(0.0, 0.000012, 0.000001)
+)
+
+state_dict["c_attn_q_w"] = c_attn_k_v_w[:, c_attn_q_idx].transpose()
+state_dict["c_attn_k_w"] = c_attn_k_v_w[:, c_attn_k_idx].transpose()
+state_dict["c_attn_v_w"] = c_attn_k_v_w[:, c_attn_v_idx].transpose()
+
+c_attn_k_v_b = np.arange(0.0, 0.000012, 0.000001)
+state_dict["c_attn_q_b"] = c_attn_k_v_b[c_attn_q_idx]
+state_dict["c_attn_k_b"] = c_attn_k_v_b[c_attn_k_idx]
+state_dict["c_attn_v_b"] = c_attn_k_v_b[c_attn_v_idx]
 
 list_vars = state_dict
 
