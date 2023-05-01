@@ -119,11 +119,11 @@ print(qkv)
 print("=====qkv_reshaped printed=======")
 
 
-query = qkv[..., : head_size]#.permute(0, 2, 1, 3)
-key = qkv[..., head_size : 2 * head_size]#.permute(0, 2, 1, 3)
-value = qkv[..., 2 * head_size :]#.permute(0, 2, 1, 3)
+query = qkv[..., : head_size].permute(0, 2, 1, 3)
+key = qkv[..., head_size : 2 * head_size].permute(0, 2, 1, 3)
+value = qkv[..., 2 * head_size :].permute(0, 2, 1, 3)
 
-print(query, "\n", key, "\n", value, "\n")
+print("normal query: \n", query)
 
 q = torch.add(
     torch.matmul(selected_embd, c_attn_q),
@@ -138,5 +138,15 @@ v = torch.add(
     c_attn_v_b
 )
 print("self q:\n", q)
-print("self k:\n", k)
-print("self v:\n", v)
+#print("self k:\n", k)
+#print("self v:\n", v)
+print("done")
+
+q_n_s = torch.Size([4, 2, 2])
+q_n = q.view(*q_n_s)
+# print(q_n)
+
+#print(q_n.permute(0, 2, 1))
+#print(q_n.permute(1, 2, 0))
+print(q_n.permute(1, 0, 2))
+print("done")

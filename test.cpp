@@ -383,6 +383,10 @@ bool eval(
     ggml_tensor* k_debug;
     ggml_tensor* v_debug;
 
+    ggml_tensor* q_reshape_debug;
+    ggml_tensor* k_reshape_debug;
+    ggml_tensor* v_reshape_debug;
+
     for (int il = 0; il < n_layer; ++il) {
         struct ggml_tensor * cur = inpL;
 
@@ -457,6 +461,19 @@ bool eval(
             auto v = ggml_add(ctx0,
                               ggml_mul_mat(ctx0, vw, inpSA),
                               ggml_repeat(ctx0, vb, vw));
+
+            q_reshape_debug = ggml_reshape_3d(ctx0, q, 2, 4, 2);
+            q = ggml_permute(ctx0,
+                             q_reshape_debug,
+                             2, 1, 0, 3);
+            k_reshape_debug = ggml_reshape_3d(ctx0, k, 2, 2, 4);
+            k = ggml_permute(ctx0,
+                             k_reshape_debug,
+                             0, 2, 1, 3);
+            v_reshape_debug = ggml_reshape_3d(ctx0, v, 2, 2, 4);
+            v = ggml_permute(ctx0,
+                             v_reshape_debug,
+                             0, 2, 1, 3);
             q_debug = q;
             k_debug = k;
             v_debug = v;
@@ -474,6 +491,10 @@ bool eval(
 
             //ggml_build_forward_expand(&gf, qkv_t);
             //ggml_build_forward_expand(&gf, qkv_t_reshaped);
+            ggml_build_forward_expand(&gf, q_reshape_debug);
+            ggml_build_forward_expand(&gf, k_reshape_debug);
+            ggml_build_forward_expand(&gf, v_reshape_debug);
+
             ggml_build_forward_expand(&gf, q);
             ggml_build_forward_expand(&gf, k);
             ggml_build_forward_expand(&gf, v);
@@ -506,15 +527,20 @@ bool eval(
 
 
 */
-    std::cout << "==========query_debug_printing=============" << std::endl;
+    std::cout << "==========query_reshape_printing=============" << std::endl;
+    debug_print_tensor(q_reshape_debug);
+    std::cout << "==========query_reshape_printend=============" << std::endl;
+/*
+    std::cout << "==========key_reshape_printing=============" << std::endl;
+    debug_print_tensor(k_reshape_debug);
+    std::cout << "==========key_reshape_printend=============" << std::endl;
+    std::cout << "==========value_reshape_printing=============" << std::endl;
+    debug_print_tensor(v_reshape_debug);
+    std::cout << "==========value_reshape_printend=============" << std::endl;
+*/
     debug_print_tensor(q_debug);
-    std::cout << "==========query_debug_printend=============" << std::endl;
-    std::cout << "==========key_debug_printing=============" << std::endl;
     debug_print_tensor(k_debug);
-    std::cout << "==========key_debug_printend=============" << std::endl;
-    std::cout << "==========value_debug_printing=============" << std::endl;
     debug_print_tensor(v_debug);
-    std::cout << "==========value_debug_printend=============" << std::endl;
 
     //debug_print_graph_filter_type(&gf, GGML_OP_ADD);
     debug_print_graph_filter_type(&gf, GGML_OP_RESHAPE);
