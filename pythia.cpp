@@ -525,6 +525,7 @@ bool pythia_eval(
                                   n_ctx*(new_qkv->ne[0])/3, n_ctx*(new_qkv->ne[0])/3*n_head,
                                   2 * offset_unit);
             std::cout << "current q nelements:" << ggml_nelements(q) <<  " k nelem: " << ggml_nelements(k) << " v nelems:" << ggml_nelements(v) << std::endl;
+            // TODO: below not finished yet.
             assert(ggml_nelements(new_qkv) != (ggml_nelements(q) + ggml_nelements(k) + ggml_element_size(v)));
 
             struct ggml_tensor * Qcur = ggml_rope(

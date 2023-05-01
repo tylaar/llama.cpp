@@ -69,7 +69,7 @@ state_dict["c_attn_k_v_w"] = np.array(
         np.arange(0.4, 0.52, 0.01),
     ]
 ).transpose()
-state_dict["c_attn_k_v_b"] = np.arange(0.0, 0.000012, 0.000001).transpose()
+state_dict["c_attn_k_v_b"] = np.arange(0.0, 0.000012, 0.000001)
 
 list_vars = state_dict
 
@@ -110,7 +110,6 @@ for name in list_vars.keys():
     #   name.endswith(".attn.v_proj.weight"):
     #    print("  Transposing")
     #    data = data.transpose()
-
     # header
     str = name.encode('utf-8')
     fout.write(struct.pack("iii", n_dims, len(str), ftype_cur))

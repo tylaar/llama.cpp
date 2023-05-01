@@ -182,15 +182,15 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
 
         model.layers.resize(n_layer);
 
-        model.embed_in_wte = ggml_new_tensor_2d(ctx, wtype, n_embd, n_vocab);
+        model.embed_in_wte = ggml_new_tensor_2d(ctx, wtype,  n_embd, n_vocab);
         model.embed_out_wte = ggml_new_tensor_2d(ctx, wtype, n_embd, n_vocab);
         model.tensors["embd_in"] = model.embed_in_wte;
         model.tensors["embd_out"] = model.embed_out_wte;
         for (int i = 0 ; i < n_layer; i++) {
             auto & layer = model.layers[i];
 
-            layer.c_attn_k_v_w = ggml_new_tensor_2d(ctx, wtype, n_embd, 3*n_embd);
-            layer.c_attn_k_v_b = ggml_new_tensor_1d(ctx, wtype, 3*n_embd);
+            layer.c_attn_k_v_w = ggml_new_tensor_2d(ctx, wtype,n_embd, 3*n_embd);
+            layer.c_attn_k_v_b = ggml_new_tensor_1d(ctx, wtype,3*n_embd);
             model.tensors["c_attn_k_v_w"] = layer.c_attn_k_v_w;
             model.tensors["c_attn_k_v_b"] = layer.c_attn_k_v_b;
         }
@@ -260,7 +260,7 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
 
             if (tensor->ne[0] != ne[0] || tensor->ne[1] != ne[1]) {
                 std::cerr << fmt::format("{}: tensor '{}' has wrong shape in model file: got [{}, {}], expected [{}, {}]\n",
-                                         __func__, name.data(), tensor->ne[0], tensor->ne[1], ne[0], ne[1]);
+                                         __func__, name.data(), ne[0], ne[1], tensor->ne[0], tensor->ne[1]);
                 return false;
             }
 
@@ -323,8 +323,8 @@ bool eval(
     const int n_head  = hparams.n_head;
     const int n_vocab = hparams.n_vocab;
     const int n_rot   = hparams.n_rot;
-
-    const int d_key = n_embd/n_head;
+    const int n_hidden = n_embd * 3;
+    const int head_size = n_embd/n_head;
 
     static size_t buf_size = 256u*1024*1024;
     static void * buf = malloc(buf_size);
@@ -357,6 +357,14 @@ bool eval(
     // embed_in_wte
     struct ggml_tensor * inpL = ggml_get_rows(ctx0, model.embed_in_wte, embd);
 
+    ggml_tensor* qkv_debug;
+    ggml_tensor* qkv_t_debug;
+    ggml_tensor* qkv_t_reshaped_debug;
+
+    ggml_tensor* q_debug;
+    ggml_tensor* k_debug;
+    ggml_tensor* v_debug;
+
     for (int il = 0; il < n_layer; ++il) {
         struct ggml_tensor * cur = inpL;
 
@@ -378,144 +386,76 @@ bool eval(
 
         // self-attention
         {
-            auto qkv = ggml_mul_mat(ctx0, model.layers[il].c_attn_k_v_w, inpSA);
-            auto qkv_b = ggml_repeat(ctx0, model.layers[il].c_attn_k_v_b, qkv);
-            qkv = ggml_add(ctx0,  qkv, qkv_b);
+            debug_print_tensor(model.layers[il].c_attn_k_v_w);
+            debug_print_tensor(model.layers[il].c_attn_k_v_b);
+            auto qkv = ggml_mul_mat(ctx0,  inpSA,  model.layers[il].c_attn_k_v_w);
+            auto qkv_b = ggml_repeat(ctx0, model.layers[il].c_attn_k_v_b, ggml_transpose(ctx0, qkv));
+            qkv = ggml_add(ctx0,  qkv, ggml_transpose(ctx0, qkv_b));
+            ggml_build_forward_expand(&gf, qkv);
+
             auto jump_type_size = ggml_element_size(qkv);
+            // TODO: so far this is still working, but could be problematic
             auto jump_unit_size = qkv->ne[0] * qkv->ne[1] / 3;
             auto offset_unit = jump_type_size * jump_unit_size;
             std::cout << "jump unit_size:" << jump_unit_size << " and jump type size: " << jump_type_size << " and offset unit: "<< offset_unit << std::endl;
 
-            auto q = ggml_view_2d(ctx0, qkv,
-                                  4, 4,
-                                  4 * 4,
+            // TODO: this reshape is causing copy
+            auto qkv_t = ggml_new_tensor_2d(ctx0, qkv->type, n_embd * 3, n_embd);
+            qkv_t = ggml_cpy(ctx0,
+                             ggml_transpose(ctx0, qkv),
+                             qkv_t);
+            auto qkv_t_reshaped = ggml_reshape_3d(ctx0, qkv_t,6, 2, 4);
+            //qkv_t_reshaped_debug = qkv_t_reshaped;
+            //TODO: only for debugging.
+            qkv_t_debug = qkv_t;
+            qkv_debug = qkv;
+            qkv_t_reshaped_debug = qkv_t_reshaped;
+
+            // TODO: viewing in 3d with slicing problematic.
+            int q_type_size = ggml_type_sizef(qkv->type);
+            auto q = ggml_view_3d(ctx0, qkv_t_reshaped,
+                                  2, 2, N,
+                                  q_type_size * 2, q_type_size * 2 * 2,
                                   0);
-            auto k = ggml_view_2d(ctx0, qkv,
-                                  4, 4,
-                                  4 * 4,
+
+            auto k_type_size = ggml_type_sizef(qkv->type);
+            auto k = ggml_view_3d(ctx0, qkv_t_reshaped,
+                                  2, 2, N,
+                                  k_type_size * 2, k_type_size * 2 * 2,
                                   1*offset_unit);
 
-            auto v = ggml_view_2d(ctx0, qkv,
-                                  4, 4,
-                                  4 * 4,
+            auto v_type_size = ggml_type_sizef(qkv->type);
+            auto v = ggml_view_3d(ctx0, qkv_t_reshaped,
+                                  2, 2, N,
+                                  v_type_size * 2, v_type_size * 2 * 2,
                                   2*offset_unit);
+            q_debug = q;
+            k_debug = k;
+            v_debug = v;
+
+            //auto q_permuted = ggml_permute(ctx0,q, 0, 2,1, 3);
+            //auto k_permuted = ggml_permute(ctx0,k,0, 2, 1, 3);
+            //auto v_permuted = ggml_permute(ctx0,v,0, 2, 1, 3);
 
             // TODO: directly slicing, ugly, and problematic.
-            auto new_qkv = ggml_reshape_3d(ctx0, qkv, 3*n_embd/n_head, n_head, N);
+            // auto new_qkv = ggml_reshape_3d(ctx0, qkv, 3*n_embd/n_head, n_head, N);
             // auto sum = ggml_sum(ctx0, new_qkv);
             //debug_print_tensor(q);
             //debug_print_tensor(k);
             //debug_print_tensor(v);
+
+            ggml_build_forward_expand(&gf, qkv_t);
+            ggml_build_forward_expand(&gf, qkv_t_reshaped);
             ggml_build_forward_expand(&gf, q);
             ggml_build_forward_expand(&gf, k);
             ggml_build_forward_expand(&gf, v);
+            //ggml_build_forward_expand(&gf, q_permuted);
+            //ggml_build_forward_expand(&gf, k_permuted);
+            //ggml_build_forward_expand(&gf, v_permuted);
 
             std::cout << "current q nelements:" << ggml_nelements(q) <<  " k nelem: " << ggml_nelements(k) << " v nelems:" << ggml_nelements(v) << std::endl;
-/* TODO: do that later.
-            assert(ggml_nelements(new_qkv) != (ggml_nelements(q) + ggml_nelements(k) + ggml_element_size(v)));
-
-            struct ggml_tensor * Qcur = q;
-            struct ggml_tensor * Kcur = k;
-
-            // store key and value to memory
-            {
-                struct ggml_tensor * Vcur = ggml_transpose(ctx0, v);
-
-                struct ggml_tensor * k = ggml_view_1d(ctx0, model.memory_k, N*n_embd, (ggml_element_size(model.memory_k)*n_embd)*(il*n_ctx + n_past));
-                struct ggml_tensor * v = ggml_view_2d(ctx0, model.memory_v, N, n_embd,
-                                                      (   n_ctx)*ggml_element_size(model.memory_v),
-                                                      (il*n_ctx)*ggml_element_size(model.memory_v)*n_embd + n_past*ggml_element_size(model.memory_v));
-
-                ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Kcur, k));
-                ggml_build_forward_expand(&gf, ggml_cpy(ctx0, Vcur, v));
-            }
-
-            // Q = Qcur.contiguous().view(n_embd/n_head, n_head, N).permute(0, 2, 1, 3)
-            struct ggml_tensor * Q =
-                    ggml_permute(ctx0,
-                                 Qcur,
-                                 0, 2, 1, 3);
-
-            // K = Kmem.view(n_embd/n_head, n_head, n_past + N).permute(0, 2, 1, 3)
-            struct ggml_tensor * K =
-                    ggml_permute(ctx0,
-                                 ggml_reshape_3d(ctx0,
-                                                 ggml_view_1d(ctx0, model.memory_k, (n_past + N)*n_embd, il*n_ctx*ggml_element_size(model.memory_k)*n_embd),
-                                                 n_embd/n_head, n_head, n_past + N),
-                                 0, 2, 1, 3);
-
-            // K * Q
-            struct ggml_tensor * KQ = ggml_mul_mat(ctx0, K, Q);
-
-            // KQ_scaled = KQ / sqrt(n_embd/n_head)
-            struct ggml_tensor * KQ_scaled =
-                    ggml_scale(ctx0,
-                               KQ,
-                               ggml_new_f32(ctx0, 1.0f/sqrt(float(n_embd)/n_head))
-                    );
-
-            // KQ_masked = mask_past(KQ_scaled)
-            struct ggml_tensor * KQ_masked = ggml_diag_mask_inf(ctx0, KQ_scaled, n_past);
-
-            // KQ = soft_max(KQ_masked)
-            struct ggml_tensor * KQ_soft_max = ggml_soft_max(ctx0, KQ_masked);
-
-            // V_trans = Vmem.view(n_embd/n_head, n_head, n_past + N).permute(1, 2, 0, 3).contiguous()
-            struct ggml_tensor * V =
-                    ggml_view_3d(ctx0, model.memory_v,
-                                 n_past + N, n_embd/n_head, n_head,
-                                 n_ctx*ggml_element_size(model.memory_v),
-                                 n_ctx*ggml_element_size(model.memory_v)*n_embd/n_head,
-                                 il*n_ctx*ggml_element_size(model.memory_v)*n_embd);
-
-            // KQV = transpose(V) * KQ_soft_max
-            struct ggml_tensor * KQV = ggml_mul_mat(ctx0, V, KQ_soft_max);
-
-            // KQV_merged = KQV.permute(0, 2, 1, 3)
-            struct ggml_tensor * KQV_merged = ggml_permute(ctx0, KQV, 0, 2, 1, 3);
-
-            // cur = KQV_merged.contiguous().view(n_embd, N)
-            cur = ggml_cpy(ctx0,
-                           KQV_merged,
-                           ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_embd, N));
-*/
         }
 
-        struct ggml_tensor * inpFF = cur;
-
-/*
-        // feed-forward network
-        // this is independent of the self-attention result, so it could be done in parallel to the self-attention
-        {
-            // note here we pass inpSA instead of cur
-            cur = ggml_mul_mat(ctx0,
-                               model.layers[il].c_mlp_h_to_4h_w,
-                               inpSA);
-
-            cur = ggml_add(ctx0,
-                           ggml_repeat(ctx0, model.layers[il].c_mlp_h_to_4h_b, cur),
-                           cur);
-
-            // GELU activation
-            cur = ggml_gelu(ctx0, cur);
-
-            // projection
-            // cur = proj_w*cur + proj_b
-            cur = ggml_mul_mat(ctx0,
-                               model.layers[il].c_mlp_4h_to_h_w,
-                               cur);
-
-            cur = ggml_add(ctx0,
-                           ggml_repeat(ctx0, model.layers[il].c_mlp_4h_to_h_b, cur),
-                           cur);
-        }
-*/
-
-        // self-attention + FF
-        //cur  = ggml_add(ctx0, cur, inpFF);
-
-        // input for next layer
-        //inpL = ggml_add(ctx0, cur, inpL);
     }
 
     // run the computation
@@ -524,7 +464,27 @@ bool eval(
     //debug_print_tensor(gf.nodes[5]);
     //debug_print_tensor(gf.nodes[6]);
     //debug_print_tensor(gf.nodes[7]);
-    debug_print_graph(&gf);
+    std::cout << "==========qkv_debug_printing=============" << std::endl;
+    debug_print_tensor(qkv_debug);
+    std::cout << "==========qkv_debug_printend=============" << std::endl;
+    std::cout << "==========qkv_t_debug_printing=============" << std::endl;
+    debug_print_tensor(qkv_t_debug);
+    std::cout << "==========qkv_t_debug_printend=============" << std::endl;
+
+    std::cout << "==========qkv_t_reshape_debug_printing=============" << std::endl;
+    debug_print_tensor(qkv_t_reshaped_debug);
+    std::cout << "==========qkv_t_reshape_debug_printend=============" << std::endl;
+
+
+    std::cout << "==========query_debug_printing=============" << std::endl;
+    debug_print_tensor(q_debug);
+    std::cout << "==========query_debug_printend=============" << std::endl;
+
+    //debug_print_graph_filter_type(&gf, GGML_OP_ADD);
+    debug_print_graph_filter_type(&gf, GGML_OP_RESHAPE);
+    debug_print_graph_filter_type(&gf, GGML_OP_VIEW);
+    //debug_print_graph_filter_type(&gf, GGML_OP_PERMUTE);
+
     //if (n_past%100 == 0) {
     //    ggml_graph_print   (&gf);
     //    ggml_graph_dump_dot(&gf, NULL, "gpt-2.dot");

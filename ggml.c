@@ -568,10 +568,10 @@ static void debug_print_tensor_1d(struct ggml_tensor* target) {
 static void debug_print_tensor_2d(struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[2D matrix] m_dim_0=%d, m_dim_1=%d type_size=%d\n", target->ne[0], target->ne[1], type_size);
-    for (int i = 0 ; i < target->ne[0]; i++) {
+    for (int i = 0 ; i < target->ne[1]; i++) {
         fprintf(stderr, "\n[");
-        for (int j = 0 ; j < target->ne[1]; j++) {
-            fprintf(stderr, "%f ", *(float*)((char*)target->data + i*target->nb[0]*type_size + j*type_size));
+        for (int j = 0 ; j < target->ne[0]; j++) {
+            fprintf(stderr, "%f ", *(float*)((char*)target->data + i*target->ne[0]*type_size + j*type_size));
         }
         fprintf(stderr, "]");
     }
@@ -581,19 +581,39 @@ static void debug_print_tensor_2d(struct ggml_tensor* target) {
 static void debug_print_tensor_3d(struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[3D matrix] m_dim_0=%d, m_dim_1=%d, m_dim_2=%d, type_size=%d\n", target->ne[0], target->ne[1], target->ne[2], type_size);
-    for (int i = 0 ; i < target->ne[0]; i++) {
+    for (int i = 0 ; i < target->ne[2]; i++) {
         fprintf(stderr, "[\n");
         for (int j = 0 ; j < target->ne[1]; j++) {
             fprintf(stderr, "    [");
-            for (int k = 0 ; k < target->ne[2]; k++) {
-                fprintf(stderr, "%f ", *(float*)((char*)target->data + i*target->nb[0]*type_size + j*target->ne[1] * type_size + k*type_size));
+            for (int k = 0 ; k < target->ne[0]; k++) {
+                int64_t outside_idx = i*target->ne[0]*target->ne[1];
+                int64_t second_idx = j*target->ne[0];
+                //fprintf(stderr, "outside_idx: %d, second_idx: %d, inside_idx: %d\n", outside_idx, second_idx, k);
+                fprintf(stderr, "%f ", *(float*)((char*)target->data + outside_idx*type_size + second_idx*type_size + k*type_size));
             }
             fprintf(stderr, "]\n");
         }
         fprintf(stderr, "]\n");
     }
     fprintf(stderr, "[3D matrix] print done.\n");
+}
 
+void debug_print_tensor_3d_as_1d(struct ggml_tensor* target) {
+    int type_size = ggml_type_sizef(target->type);
+    fprintf(stderr, "[3D -> 1D] m_dim_0=%d, m_dim_1=%d, m_dim_2=%d, type_size=%d\n[", target->ne[0], target->ne[1], target->ne[2], type_size);
+    for (int i = 0 ; i < target->ne[0] * target->ne[1] * target->ne[2]; i++) {
+        fprintf(stderr, "%f ", *(float*)((char*)target->data + i*type_size));
+    }
+    fprintf(stderr, "]\n");
+}
+
+void debug_print_tensor_2d_as_1d(struct ggml_tensor* target) {
+    int type_size = ggml_type_sizef(target->type);
+    fprintf(stderr, "[2D -> 1D] m_dim_0=%d, m_dim_1=%d, type_size=%d\n[", target->ne[0], target->ne[1], type_size);
+    for (int i = 0 ; i < target->ne[0] * target->ne[1]; i++) {
+        fprintf(stderr, "%f ", *(float*)((char*)target->data + i*type_size));
+    }
+    fprintf(stderr, "]\n");
 }
 
 void debug_print_tensor(struct ggml_tensor* target) {
@@ -611,8 +631,10 @@ void debug_print_tensor(struct ggml_tensor* target) {
         debug_print_tensor_1d(target);
     } else if (target->n_dims == 2) {
         debug_print_tensor_2d(target);
+        debug_print_tensor_2d_as_1d(target);
     } else if (target->n_dims == 3) {
         debug_print_tensor_3d(target);
+        debug_print_tensor_3d_as_1d(target);
     }
 }
 
@@ -620,6 +642,19 @@ void debug_print_graph(struct ggml_cgraph* gf) {
     fprintf(stderr, "=====printing graph====");
     for (int i = 0; i < gf->n_nodes; i++) {
         struct ggml_tensor* t = gf->nodes[i];
+        fprintf(stderr, "node op type: %d\n", t->op);
+        debug_print_tensor(t);
+    }
+    fprintf(stderr, "===== graph print done====");
+}
+
+void debug_print_graph_filter_type(struct ggml_cgraph* gf, enum ggml_op op) {
+    fprintf(stderr, "=====printing graph====");
+    for (int i = 0; i < gf->n_nodes; i++) {
+        struct ggml_tensor* t = gf->nodes[i];
+        if (t->op != op) {
+            continue;
+        }
         fprintf(stderr, "node op type: %d\n", t->op);
         debug_print_tensor(t);
     }
