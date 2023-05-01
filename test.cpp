@@ -151,7 +151,7 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
     ctx_size += n_embd*n_vocab* ggml_type_sizef(wtype); // embed_out_wte
 
     {
-        ctx_size += n_layer*(3*n_embd*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_k_v_w;
+        ctx_size += n_layer*(3*n_embd*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_k_v_w TODO: in qkv in total, not isolated yet.
         ctx_size += n_layer*(3*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_k_v_b;
 
         ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F32); // memory_k TODO for caching??
@@ -375,10 +375,6 @@ bool eval(
     // embed_in_wte
     struct ggml_tensor * inpL = ggml_get_rows(ctx0, model.embed_in_wte, embd);
 
-    ggml_tensor* qkv_debug;
-    ggml_tensor* qkv_t_debug;
-    ggml_tensor* qkv_t_reshaped_debug;
-
     ggml_tensor* q_debug;
     ggml_tensor* k_debug;
     ggml_tensor* v_debug;
@@ -450,27 +446,27 @@ bool eval(
             int q_type_size = ggml_type_sizef(qw->type);
             auto q = ggml_add(ctx0,
                               ggml_mul_mat(ctx0, qw, inpSA),
-                              ggml_repeat(ctx0, qb, qw));
+                              ggml_repeat(ctx0, qb, inpSA));
 
             auto k_type_size = ggml_type_sizef(kw->type);
             auto k = ggml_add(ctx0,
                               ggml_mul_mat(ctx0, kw, inpSA),
-                              ggml_repeat(ctx0, kb, kw));
+                              ggml_repeat(ctx0, kb, inpSA));
 
             auto v_type_size = ggml_type_sizef(vw->type);
             auto v = ggml_add(ctx0,
                               ggml_mul_mat(ctx0, vw, inpSA),
-                              ggml_repeat(ctx0, vb, vw));
+                              ggml_repeat(ctx0, vb, inpSA));
 
-            q_reshape_debug = ggml_reshape_3d(ctx0, q, 2, 2, 4);
+            q_reshape_debug = ggml_reshape_3d(ctx0, q, n_hidden / n_embd, n_head, N);
             q = ggml_permute(ctx0,
                              q_reshape_debug,
                              0, 2, 1, 3); // 0 1 2 3
-            k_reshape_debug = ggml_reshape_3d(ctx0, k, 2, 2, 4);
+            k_reshape_debug = ggml_reshape_3d(ctx0, k, n_hidden / n_embd, n_head, N);
             k = ggml_permute(ctx0,
                              k_reshape_debug,
                              0, 2, 1, 3);
-            v_reshape_debug = ggml_reshape_3d(ctx0, v, 2, 2, 4);
+            v_reshape_debug = ggml_reshape_3d(ctx0, v, n_hidden / n_embd, n_head, N);
             v = ggml_permute(ctx0,
                              v_reshape_debug,
                              0, 2, 1, 3);
