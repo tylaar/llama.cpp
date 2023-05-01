@@ -462,10 +462,10 @@ bool eval(
                               ggml_mul_mat(ctx0, vw, inpSA),
                               ggml_repeat(ctx0, vb, vw));
 
-            q_reshape_debug = ggml_reshape_3d(ctx0, q, 2, 4, 2);
+            q_reshape_debug = ggml_reshape_3d(ctx0, q, 2, 2, 4);
             q = ggml_permute(ctx0,
                              q_reshape_debug,
-                             2, 1, 0, 3);
+                             0, 2, 1, 3); // 0 1 2 3
             k_reshape_debug = ggml_reshape_3d(ctx0, k, 2, 2, 4);
             k = ggml_permute(ctx0,
                              k_reshape_debug,

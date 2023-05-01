@@ -571,7 +571,7 @@ static void debug_print_tensor_2d(struct ggml_tensor* target) {
     for (int i = 0 ; i < target->ne[1]; i++) {
         fprintf(stderr, "\n[");
         for (int j = 0 ; j < target->ne[0]; j++) {
-            fprintf(stderr, "%f ", *(float*)((char*)target->data + i*target->ne[0]*type_size + j*type_size));
+            fprintf(stderr, "%f ", *(float*)((char*)target->data + i*target->nb[1]+ j*target->nb[0]));
         }
         fprintf(stderr, "]");
     }
@@ -586,10 +586,14 @@ static void debug_print_tensor_3d(struct ggml_tensor* target) {
         for (int j = 0 ; j < target->ne[1]; j++) {
             fprintf(stderr, "    [");
             for (int k = 0 ; k < target->ne[0]; k++) {
+/*
                 int64_t outside_idx = i*target->ne[0]*target->ne[1];
-                int64_t second_idx = j*target->ne[0];
-                //fprintf(stderr, "outside_idx: %d, second_idx: %d, inside_idx: %d\n", outside_idx, second_idx, k);
-                fprintf(stderr, "%f ", *(float*)((char*)target->data + outside_idx*type_size + second_idx*type_size + k*type_size));
+                int64_t outside_idx_d = target->nb[2];
+                int64_t inside_idx = j*target->ne[0];
+                int64_t inside_idx_d = target->nb[1];
+                fprintf(stderr, "\nout_idx: %d, out_d_idx: %d, inside_idx: %d, inside_d_idx: %d\n", outside_idx, outside_idx_d, inside_idx, inside_idx_d);
+*/
+                fprintf(stderr, "%f ", *(float*)((char*)target->data + i*target->nb[2] + j*target->nb[1] + k*target->nb[0]));
             }
             fprintf(stderr, "]\n");
         }
