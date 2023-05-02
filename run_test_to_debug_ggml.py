@@ -6,12 +6,15 @@ import torch
 import numpy as np
 from torch import nn
 
+def generate_diag_mask(max_ndims):
+    z = torch.zeros((max_ndims, max_ndims))
+    for i, x in enumerate(z):
+        for j, y in enumerate(x):
+            if i >= j:
+                z[i][j] = 1.0
+    return torch.gt(z, 0.0)
 
-# fout.write(struct.pack("i", 0x67676d6c))  # magic: ggml in hex
-# todo: which vocab_sie is correct? in config.json or in tokenizer?
-# vocab_size = hparams['vocab_size']
-# vocab_size = len(vocab)
-# print('vocab_size:', 10)
+# Meta preparation stage.
 vocab_size = 10
 # fout.write(struct.pack("i", 10))
 
@@ -34,6 +37,9 @@ n_layer = 1
 # fout.write(struct.pack("i", ftype))
 ftype = 0
 
+norm_factor = torch.sqrt(torch.tensor(n_embd/n_head, dtype=torch.float32)).to(torch.get_default_dtype())
+
+# data preparation stage.
 state_dict = {}
 
 state_dict["embd_in"] = np.array(
@@ -104,6 +110,7 @@ c_attn_q_b = c_attn_k_v_b[c_attn_q_idx]
 c_attn_k_b = c_attn_k_v_b[c_attn_k_idx]
 c_attn_v_b = c_attn_k_v_b[c_attn_v_idx]
 
+# starting to evaluate
 
 e_in = torch.from_numpy(state_dict["embd_in"])
 e_out = torch.from_numpy(state_dict["embd_out"])
@@ -142,6 +149,7 @@ value = qkv[..., 2 * head_size :].permute(0, 2, 1, 3)
 
 print("normal query: \n", query)
 
+# TODO: below part is just trying to minic qkv separated into q, k, v
 q = torch.add(
     torch.matmul(selected_embd, c_attn_q),
     c_attn_q_b
@@ -159,11 +167,71 @@ print("self q:\n", q)
 #print("self v:\n", v)
 print("done")
 
-q_n_s = torch.Size([4, 2, 3])
-q_n = q.view(*q_n_s)
+qkv_permute = torch.Size([4, 2, 3])
+q_n = q.view(*qkv_permute)
+k_n = k.view(*qkv_permute)
+v_n = v.view(*qkv_permute)
 # print(q_n)
 
 #print(q_n.permute(0, 2, 1))
 #print(q_n.permute(1, 2, 0))
-print(q_n.permute(1, 0, 2))
+q_n_p = q_n.permute(1, 0, 2)
+k_n_p = k_n.permute(1, 0, 2)
+v_n_p = v_n.permute(1, 0, 2)
+print("===============query_reshape_printing============")
+print(q_n_p)
+print("===============key_reshape_printing============")
+print(k_n_p)
+print("===============value_reshape_printing============")
+print(v_n_p)
+
+# starting to do the fucking attention here.
+# starting to do the fucking attention here.
+# starting to do the fucking attention here.
+
+num_attention_heads, query_length, attn_head_size = q_n_p.size()
+batch_size = 1
+key_length = k_n_p.size(-2)
+
+bias = generate_diag_mask(n_ctx)[None, None, :, :]
+
+causal_mask = bias[:, :, key_length - query_length : key_length, :key_length]
+
+print(causal_mask)
+
+attn_scores = torch.zeros(
+    batch_size * num_attention_heads,
+    query_length,
+    key_length,
+    dtype=query.dtype,
+    device=key.device,
+    )
+
+alpha = (torch.tensor(1.0, dtype=norm_factor.dtype, device=norm_factor.device) / norm_factor)
+
+attn_scores = torch.baddbmm(
+    attn_scores,
+    q_n_p,
+    k_n_p.transpose(1, 2),
+    beta=1.0,
+    alpha=alpha,
+)
+attn_scores = attn_scores.view(batch_size, num_attention_heads, query_length, key_length)
+print("*******************attn_score*******************")
+print("===================score_before_causal mask=============")
+print(attn_scores)
+mask_value = torch.finfo(attn_scores.dtype).min
+mask_value = torch.tensor(mask_value, dtype=attn_scores.dtype)
+print("===================score_after_causal mask=============")
+attn_scores = torch.where(causal_mask, attn_scores, mask_value) # do the fucking mask
+
+print(attn_scores)
+
+# TODO: no attention_mask considered yet
+# TODO: no head_mask considered yet.
+
+print("*******************attn_weight*******************")
+attn_weights = nn.functional.softmax(attn_scores, dim=-1)
+print(attn_weights)
+# do the _attn_ part
 print("done")
