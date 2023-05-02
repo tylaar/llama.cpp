@@ -42,6 +42,25 @@ norm_factor = torch.sqrt(torch.tensor(n_embd/n_head, dtype=torch.float32)).to(to
 # data preparation stage.
 state_dict = {}
 
+layer_norm_w = np.array([0.01, 0.02, 0.03, 0.01, 0.02, 0.03])
+layer_norm_b = np.array([0.001, 0.002, 0.003, 0.001, 0.002, 0.003])
+
+post_layer_norm_w = np.array([0.04, 0.05, 0.06, 0.04, 0.05, 0.06])
+post_layer_norm_b = np.array([0.004, 0.005, 0.006, 0.004, 0.005, 0.006])
+
+layer_dense_weight = np.array(
+    [
+        np.linspace(0.02, 0.07, 6),
+        np.linspace(0.08, 0.13, 6),
+        np.linspace(0.14, 0.19, 6),
+        np.linspace(0.20, 0.25, 6),
+        np.linspace(0.26, 0.31, 6),
+        np.linspace(0.32, 0.37, 6),
+    ]
+)
+layer_dense_bias = np.linspace(0.001, 0.005, 6)
+
+
 state_dict["embd_in"] = np.array(
     [
         np.linspace(0.01, 0.06, 6),  # a
@@ -100,6 +119,15 @@ state_dict["c_attn_q_b"] = c_attn_k_v_b[c_attn_q_idx]
 state_dict["c_attn_k_b"] = c_attn_k_v_b[c_attn_k_idx]
 state_dict["c_attn_v_b"] = c_attn_k_v_b[c_attn_v_idx]
 
+state_dict["c_l_norm_w"] = layer_norm_w
+state_dict["c_l_norm_b"] = layer_norm_b
+state_dict["c_p_l_norm_w"] = post_layer_norm_w
+state_dict["c_p_l_norm_b"] = post_layer_norm_b
+
+state_dict["c_l_dense_w"] = layer_dense_weight
+state_dict["c_l_dense_b"] = layer_dense_bias
+
+
 c_attn_k_v_w = torch.from_numpy(state_dict["c_attn_k_v_w"])
 c_attn_k_v_b = torch.from_numpy(state_dict["c_attn_k_v_b"])
 
@@ -119,9 +147,18 @@ embd_in.weight.data = e_in
 embd_out = nn.Embedding(10, 4)
 embd_out.weight.data = e_out
 
+layer_norm = nn.LayerNorm(6)
+layer_norm.weight.data = torch.from_numpy(layer_norm_w)
+layer_norm.bias.data = torch.from_numpy(layer_norm_b)
+
+nn_dense = nn.Linear(n_embd, n_embd)
+nn_dense.weight.data = torch.from_numpy(layer_dense_weight)
+nn_dense.bias.data = torch.from_numpy(layer_dense_bias)
+
 embd_idx = torch.tensor([2,4,6,8])
 
 selected_embd = embd_in(embd_idx)
+# selected_embd = layer_norm(selected_embd)
 print("=====original attn_k_v_w=====")
 print(c_attn_k_v_w)
 qkv = torch.add(
@@ -163,15 +200,13 @@ v = torch.add(
     c_attn_v_b
 )
 print("self q:\n", q)
-#print("self k:\n", k)
-#print("self v:\n", v)
 print("done")
 
 qkv_permute = torch.Size([4, 2, 3])
 q_n = q.view(*qkv_permute)
 k_n = k.view(*qkv_permute)
 v_n = v.view(*qkv_permute)
-# print(q_n)
+print(q_n)
 
 #print(q_n.permute(0, 2, 1))
 #print(q_n.permute(1, 2, 0))
@@ -233,9 +268,26 @@ print(attn_scores)
 print("*******************attn_weight*******************")
 attn_weights = nn.functional.softmax(attn_scores, dim=-1)
 print(attn_weights)
-print("*******************attn_output*******************")
 attn_output = torch.matmul(attn_weights, v_n_p[None, :])
-print(attn_output);
 
+# tensor: [bs, seq_len, hidden_size]
+# -> [bs, seq_len, num_attention_heads, attn_head_size]
+# tensor = attn_output.view(new_shape)
+tensor = attn_output
+print("*******************attn_output_merged_before_permute*******************")
+print(tensor)
+# -> [bs, num_attention_heads, seq_len, attn_head_size]
+tensor = tensor.permute(0, 2, 1, 3)
+print("*******************attn_output_merged_after_permute*******************")
+print(tensor)
+
+print("*******************attn_output_reshape_or_view_permute*******************")
+tensor = tensor.reshape(tensor.size(0), tensor.size(1), num_attention_heads * head_size)
+print(tensor)
+
+
+print("*******************attn_densed*******************")
+densed = nn_dense(tensor)
+print(densed)
 # do the _attn_ part
 print("done")

@@ -34,6 +34,24 @@ fout.write(struct.pack("i", 1))  # n_layer
 fout.write(struct.pack("i", ftype))
 state_dict = {}
 
+layer_norm_w = np.array([0.01, 0.02, 0.03, 0.01, 0.02, 0.03])
+layer_norm_b = np.array([0.001, 0.002, 0.003, 0.001, 0.002, 0.003])
+
+post_layer_norm_w = np.array([0.04, 0.05, 0.06, 0.04, 0.05, 0.06])
+post_layer_norm_b = np.array([0.004, 0.005, 0.006, 0.004, 0.005, 0.006])
+
+layer_dense_weight = np.array(
+    [
+        np.linspace(0.02, 0.07, 6),
+        np.linspace(0.08, 0.13, 6),
+        np.linspace(0.14, 0.19, 6),
+        np.linspace(0.20, 0.25, 6),
+        np.linspace(0.26, 0.31, 6),
+        np.linspace(0.32, 0.37, 6),
+    ]
+)
+layer_dense_bias = np.linspace(0.001, 0.005, 6)
+
 state_dict["embd_in"] = np.array(
     [
         np.linspace(0.01, 0.06, 6),  # a
@@ -87,6 +105,14 @@ c_attn_k_v_b = np.linspace(0.0, 0.000018, 18)
 state_dict["c_attn_q_b"] = c_attn_k_v_b[c_attn_q_idx]
 state_dict["c_attn_k_b"] = c_attn_k_v_b[c_attn_k_idx]
 state_dict["c_attn_v_b"] = c_attn_k_v_b[c_attn_v_idx]
+
+state_dict["c_l_norm_w"] = layer_norm_w
+state_dict["c_l_norm_b"] = layer_norm_b
+state_dict["c_p_l_norm_w"] = post_layer_norm_w
+state_dict["c_p_l_norm_b"] = post_layer_norm_b
+
+state_dict["c_l_dense_w"] = layer_dense_weight # TODO notice the transpose is NOT added here!
+state_dict["c_l_dense_b"] = layer_dense_bias
 
 list_vars = state_dict
 
