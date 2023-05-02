@@ -388,6 +388,7 @@ bool eval(
     ggml_tensor* qk_scaled_debug;
     ggml_tensor* qk_causal_masked_debug;
     ggml_tensor* qk_softmax_debug;
+    ggml_tensor* qkv_output_debug;
 
     for (int il = 0; il < n_layer; ++il) {
         struct ggml_tensor * cur = inpL;
@@ -421,30 +422,33 @@ bool eval(
             auto vb = model.layers[il].c_attn_v_b;
             debug_print_tensor(vw);
             // TODO: viewing in 3d with slicing problematic.
-            auto q = ggml_add(ctx0,
+            auto q_cur = ggml_add(ctx0,
                               ggml_mul_mat(ctx0, qw, inpSA),
                               ggml_repeat(ctx0, qb, inpSA));
 
-            auto k = ggml_add(ctx0,
+            auto k_cur = ggml_add(ctx0,
                               ggml_mul_mat(ctx0, kw, inpSA),
                               ggml_repeat(ctx0, kb, inpSA));
 
-            auto v = ggml_add(ctx0,
+            auto v_cur = ggml_add(ctx0,
                               ggml_mul_mat(ctx0, vw, inpSA),
                               ggml_repeat(ctx0, vb, inpSA));
 
-            q_reshape_debug = ggml_reshape_3d(ctx0, q, n_hidden / n_embd, n_head, N);
-            q = ggml_permute(ctx0,
+            q_reshape_debug = ggml_reshape_3d(ctx0, q_cur, n_hidden / n_embd, n_head, N);
+            auto q = ggml_permute(ctx0,
                              q_reshape_debug,
-                             0, 2, 1, 3); // 0 1 2 3
-            k_reshape_debug = ggml_reshape_3d(ctx0, k, n_hidden / n_embd, n_head, N);
-            k = ggml_permute(ctx0,
+                                  0, 2, 1, 3);
+            k_reshape_debug = ggml_reshape_3d(ctx0, k_cur, n_hidden / n_embd, n_head, N);
+            auto k = ggml_permute(ctx0,
                              k_reshape_debug,
                              0, 2, 1, 3);
-            v_reshape_debug = ggml_reshape_3d(ctx0, v, n_hidden / n_embd, n_head, N);
-            v = ggml_permute(ctx0,
-                             v_reshape_debug,
-                             0, 2, 1, 3);
+            v_reshape_debug = ggml_reshape_3d(ctx0, v_cur, n_hidden / n_embd, n_head, N);
+            auto v_permuted = ggml_permute(ctx0,
+                                      v_reshape_debug,
+                                      1, 2, 0, 3);
+            auto v = ggml_cpy(ctx0,
+                              v_permuted,
+                              ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, v_permuted->ne[0], v_permuted->ne[1], v_permuted->ne[2]));
             q_debug = q;
             k_debug = k;
             v_debug = v;
@@ -458,27 +462,12 @@ bool eval(
             auto qk_softmax = ggml_soft_max(ctx0, qk_causal_masked);
             qk_softmax_debug = qk_softmax;
 
-            //auto q_permuted = ggml_permute(ctx0,q, 0, 2,1, 3);
-            //auto k_permuted = ggml_permute(ctx0,k,0, 2, 1, 3);
-            //auto v_permuted = ggml_permute(ctx0,v,0, 2, 1, 3);
+            auto qkv_output = ggml_mul_mat(ctx0, qk_softmax, v);
+            qkv_output_debug = qkv_output;
 
-            // TODO: directly slicing, ugly, and problematic.
-            // auto new_qkv = ggml_reshape_3d(ctx0, qkv, 3*n_embd/n_head, n_head, N);
-            // auto sum = ggml_sum(ctx0, new_qkv);
-            //debug_print_tensor(q);
-            //debug_print_tensor(k);
-            //debug_print_tensor(v);
 
             //ggml_build_forward_expand(&gf, qkv_t);
             //ggml_build_forward_expand(&gf, qkv_t_reshaped);
-            ggml_build_forward_expand(&gf, q_reshape_debug);
-            ggml_build_forward_expand(&gf, k_reshape_debug);
-            ggml_build_forward_expand(&gf, v_reshape_debug);
-            ggml_build_forward_expand(&gf, qk_debug);
-            ggml_build_forward_expand(&gf, qk_scaled_debug);
-            ggml_build_forward_expand(&gf, qk_causal_masked_debug);
-            ggml_build_forward_expand(&gf, qk_softmax_debug);
-
             ggml_build_forward_expand(&gf, q);
             ggml_build_forward_expand(&gf, k);
             ggml_build_forward_expand(&gf, v);
@@ -486,9 +475,16 @@ bool eval(
             ggml_build_forward_expand(&gf, qk_scaled);
             ggml_build_forward_expand(&gf, qk_causal_masked);
             ggml_build_forward_expand(&gf, qk_softmax);
-            //ggml_build_forward_expand(&gf, q_permuted);
-            //ggml_build_forward_expand(&gf, k_permuted);
-            //ggml_build_forward_expand(&gf, v_permuted);
+            ggml_build_forward_expand(&gf, qkv_output);
+
+            ggml_build_forward_expand(&gf, q_reshape_debug);
+            ggml_build_forward_expand(&gf, k_reshape_debug);
+            ggml_build_forward_expand(&gf, v_reshape_debug);
+            ggml_build_forward_expand(&gf, qk_debug);
+            ggml_build_forward_expand(&gf, qk_scaled_debug);
+            ggml_build_forward_expand(&gf, qk_causal_masked_debug);
+            ggml_build_forward_expand(&gf, qk_softmax_debug);
+            ggml_build_forward_expand(&gf, qkv_output_debug);
 
             std::cout << "current q nelements:" << ggml_nelements(q) <<  " k nelem: " << ggml_nelements(k) << " v nelems:" << ggml_nelements(v) << std::endl;
         }
@@ -529,6 +525,10 @@ bool eval(
     std::cout << "==========qk_softmax_printing=============" << std::endl;
     debug_print_tensor(qk_softmax_debug);
     std::cout << "==========qk_softmax_printend=============" << std::endl;
+    std::cout << "==========qkv_output_printing=============" << std::endl;
+    debug_print_tensor(qkv_output_debug);
+    std::cout << "==========qkv_output_printend=============" << std::endl;
+
 
     //debug_print_graph_filter_type(&gf, GGML_OP_ADD);
     //debug_print_graph_filter_type(&gf, GGML_OP_RESHAPE);

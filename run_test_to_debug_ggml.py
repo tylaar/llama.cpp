@@ -233,5 +233,9 @@ print(attn_scores)
 print("*******************attn_weight*******************")
 attn_weights = nn.functional.softmax(attn_scores, dim=-1)
 print(attn_weights)
+print("*******************attn_output*******************")
+attn_output = torch.matmul(attn_weights, v_n_p[None, :])
+print(attn_output);
+
 # do the _attn_ part
 print("done")
