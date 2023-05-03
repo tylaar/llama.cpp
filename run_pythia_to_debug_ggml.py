@@ -6,7 +6,7 @@ import torch
 import numpy as np
 from torch import nn
 from transformers import GPTNeoXForCausalLM, AutoTokenizer
-
+from transformers.activations import GELUActivation
 
 dir_model = "/Users/yifengyu/hack/local_models"
 
@@ -105,6 +105,24 @@ embd_out.weight.data = embd_out_data
 layer_norm = nn.LayerNorm(n_embd)
 layer_norm.weight.data = layer_norm_w
 layer_norm.bias.data = layer_norm_b
+
+post_layer_norm = nn.LayerNorm(n_embd)
+post_layer_norm.weight.data = post_layer_norm_w
+post_layer_norm.bias.data = post_layer_norm_b
+
+c_h_to_4h_w = list_vars["gpt_neox.layers.0.mlp.dense_h_to_4h.weight"]
+c_h_to_4h_b = list_vars["gpt_neox.layers.0.mlp.dense_h_to_4h.bias"]
+c_4h_to_h_w = list_vars["gpt_neox.layers.0.mlp.dense_4h_to_h.weight"]
+c_4h_to_h_b = list_vars["gpt_neox.layers.0.mlp.dense_4h_to_h.bias"]
+
+nn_h_to_4h = nn.Linear(n_embd*4, n_embd)
+nn_h_to_4h.weight.data = c_h_to_4h_w
+nn_h_to_4h.bias.data = c_h_to_4h_b
+nn_4h_to_h = nn.Linear(n_embd, n_embd*4)
+nn_4h_to_h.weight.data = c_4h_to_h_w
+nn_4h_to_h.bias.data = c_4h_to_h_b
+
+gelu = GELUActivation()
 
 nn_dense = nn.Linear(n_embd, n_embd)
 nn_dense.weight.data = layer_dense_weight
@@ -240,5 +258,18 @@ print(tensor)
 print("*******************attn_densed*******************")
 densed = nn_dense(tensor)
 print(densed)
+# do the _attn_ part
+print("done")
+
+
+print("*******************post_normed*******************")
+post_normed = post_layer_norm(densed)
+print(post_normed)
+higher = nn_h_to_4h(post_normed)
+gelued = gelu.forward(higher)
+lower = nn_4h_to_h(gelued)
+print(lower)
+
+
 # do the _attn_ part
 print("done")

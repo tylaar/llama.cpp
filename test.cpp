@@ -43,6 +43,13 @@ struct test_layer {
 
     ggml_tensor * c_l_dense_w;
     ggml_tensor * c_l_dense_b;
+
+    // ff
+    struct ggml_tensor * c_mlp_h_to_4h_w;
+    struct ggml_tensor * c_mlp_h_to_4h_b;
+
+    struct ggml_tensor * c_mlp_4h_to_h_w;
+    struct ggml_tensor * c_mlp_4h_to_h_b;
 };
 
 struct test_model {
@@ -170,7 +177,13 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
         ctx_size += n_layer*(n_embd* ggml_type_sizef(GGML_TYPE_F32)); // post_layer_norm_b;
 
         ctx_size += n_layer*(n_embd* n_embd* ggml_type_size(GGML_TYPE_F32)); // output_dense_weight
-        ctx_size += n_layer*(n_embd * ggml_type_sizef(GGML_TYPE_F32));
+        ctx_size += n_layer*(n_embd * ggml_type_sizef(GGML_TYPE_F32)); // output_dense_bias
+
+        // ff part
+        ctx_size += n_layer*(n_embd*n_embd*4 * ggml_type_size(GGML_TYPE_F32));
+        ctx_size += n_layer*(n_embd*4 * ggml_type_size(GGML_TYPE_F32));
+        ctx_size += n_layer*(n_embd*n_embd*4 * ggml_type_size(GGML_TYPE_F32));
+        ctx_size += n_layer*(n_embd * ggml_type_size(GGML_TYPE_F32));
 
         ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F32); // memory_k TODO for caching??
         ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F32); // memory_v TODO for caching??
@@ -243,6 +256,15 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
             layer.c_l_dense_b = ggml_new_tensor_1d(ctx, wtype,n_embd);
             model.tensors["c_l_dense_w"] = layer.c_l_dense_w;
             model.tensors["c_l_dense_b"] = layer.c_l_dense_b;
+
+            layer.c_mlp_h_to_4h_w = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd*4);
+            layer.c_mlp_h_to_4h_b = ggml_new_tensor_1d(ctx, wtype, n_embd*4);
+            model.tensors["c_mlp_h_4h_w"] = layer.c_mlp_h_to_4h_w;
+            model.tensors["c_mlp_h_4h_b"] = layer.c_mlp_h_to_4h_b;
+            layer.c_mlp_4h_to_h_w = ggml_new_tensor_2d(ctx, wtype, n_embd*4, n_embd);
+            layer.c_mlp_4h_to_h_b = ggml_new_tensor_1d(ctx, wtype, n_embd);
+            model.tensors["c_mlp_4h_h_w"] = layer.c_mlp_4h_to_h_w;
+            model.tensors["c_mlp_4h_h_b"] = layer.c_mlp_4h_to_h_b;
         }
     }
 
@@ -425,7 +447,7 @@ bool eval(
     ggml_tensor *qkv_permuted_debug;
     ggml_tensor* qkv_merged_debug;
     ggml_tensor* qkv_densed_debug;
-    ggml_tensor* qk_copy;
+    ggml_tensor* qkv_copy;
     for (int il = 0; il < n_layer; ++il) {
         struct ggml_tensor * cur = inpL;
 
@@ -491,9 +513,6 @@ bool eval(
             v_debug = v;
 
             auto qk = ggml_mul_mat(ctx0, k, q);
-            qk_copy = ggml_cpy(ctx0,
-                                    qk,
-                                    ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, qk->ne[0], qk->ne[1], qk->ne[2]));
             qk_debug = qk;
             auto qk_scaled = ggml_scale(ctx0, qk, alpha);
             qk_scaled_debug = qk_scaled;
@@ -519,6 +538,35 @@ bool eval(
                                        ggml_repeat(ctx0, model.layers[il].c_l_dense_b, qkv_merged));
             qkv_densed_debug = qkv_densed;
 
+            //lctx->use_buf(ctx0, 1);
+
+            auto qkv_post_normed = ggml_norm(ctx0, qkv_densed);
+
+            // cur = ln_input_norm_w*cur + ln_input_norm_b
+            qkv_post_normed = ggml_add(ctx0,
+                                       ggml_mul(ctx0,
+                                                qkv_post_normed,
+                                                ggml_repeat(ctx0,  model.layers[il].c_p_l_norm_w, qkv_post_normed)),
+                                       ggml_repeat(ctx0, model.layers[il].c_p_l_norm_b, qkv_post_normed));
+
+
+
+
+            auto qkv_h_4h = ggml_mul_mat(ctx0, model.layers[il].c_mlp_h_to_4h_w, qkv_post_normed);
+            qkv_h_4h = ggml_add(ctx0,
+                                qkv_h_4h,
+                                ggml_repeat(ctx0,  model.layers[il].c_mlp_h_to_4h_b, qkv_h_4h));
+
+            auto gelu_ed = ggml_gelu(ctx0, qkv_h_4h);
+
+
+            auto qkv_4h_h = ggml_mul_mat(ctx0, model.layers[il].c_mlp_4h_to_h_w, gelu_ed);
+            qkv_4h_h = ggml_add(ctx0,
+                                qkv_4h_h,
+                                ggml_repeat(ctx0, model.layers[il].c_mlp_4h_to_h_b, qkv_4h_h));
+
+
+            qkv_copy = qkv_4h_h;
             //ggml_build_forward_expand(&gf, qkv_t);
             //ggml_build_forward_expand(&gf, qkv_t_reshaped);
             ggml_build_forward_expand(&gf, q);
@@ -533,7 +581,7 @@ bool eval(
             ggml_build_forward_expand(&gf, qkv_densed);
 
             // Below are for debugging purpose
-            ggml_build_forward_expand(&gf, qk_copy);
+            ggml_build_forward_expand(&gf, qkv_copy);
             ggml_build_forward_expand(&gf, inp_normed_debug);
             ggml_build_forward_expand(&gf, q_reshape_debug);
             ggml_build_forward_expand(&gf, k_reshape_debug);
@@ -576,7 +624,7 @@ bool eval(
     debug_print_tensor_lite(v_debug);
     std::cout << "**********ending printing permuted****************" << std::endl;
     std::cout << "==========qk_malmut_printing=============" << std::endl;
-    debug_print_tensor_lite(qk_copy);
+    debug_print_tensor_lite(qkv_copy);
     std::cout << "==========qk_malmut_printend=============" << std::endl;
 
     std::cout << "==========qk_malmut_scaled_printing=============" << std::endl;
@@ -602,6 +650,9 @@ bool eval(
     std::cout << "==========qkv_densed_printing=============" << std::endl;
     debug_print_tensor_lite(qkv_densed_debug);
     std::cout << "==========qkv_densed_printend=============" << std::endl;
+    std::cout << "==========qkv_after_mlp_printing=============" << std::endl;
+    debug_print_tensor_lite(qkv_copy);
+    std::cout << "==========qkv_after_mlp_printend=============" << std::endl;
 
 
     //debug_print_graph_filter_type(&gf, GGML_OP_ADD);

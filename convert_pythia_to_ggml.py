@@ -84,6 +84,9 @@ new_list_vars["c_l_dense_w"] = layer_dense_weight
 layer_dense_bias = list_vars["gpt_neox.layers.0.attention.dense.bias"]
 new_list_vars["c_l_dense_b"] = layer_dense_bias
 
+#
+# starting isolate out qkv part.
+#
 c_attn_k_v_w = list_vars["gpt_neox.layers.0.attention.query_key_value.weight"]
 # c_attn_k_v_w = torch.transpose(c_attn_k_v_w, 0, 1)
 c_attn_k_v_b = list_vars["gpt_neox.layers.0.attention.query_key_value.bias"]
@@ -105,6 +108,19 @@ new_list_vars["c_attn_q_w"] = c_attn_q
 new_list_vars["c_attn_q_b"] = c_attn_q_b
 new_list_vars["c_attn_v_w"] = c_attn_v
 new_list_vars["c_attn_v_b"] = c_attn_v_b
+
+# End of isolate qkv part
+
+# start h_4h_h part
+c_mlp_h_4h_w = list_vars["gpt_neox.layers.0.mlp.dense_h_to_4h.weight"]
+new_list_vars["c_mlp_h_4h_w"] = c_mlp_h_4h_w
+c_mlp_h_4h_b = list_vars["gpt_neox.layers.0.mlp.dense_h_to_4h.bias"]
+new_list_vars["c_mlp_h_4h_b"] = c_mlp_h_4h_b
+c_mlp_4h_h_w = list_vars["gpt_neox.layers.0.mlp.dense_4h_to_h.weight"]
+new_list_vars["c_mlp_4h_h_w"] = c_mlp_4h_h_w
+c_mlp_4h_h_b = list_vars["gpt_neox.layers.0.mlp.dense_4h_to_h.bias"]
+new_list_vars["c_mlp_4h_h_b"] = c_mlp_4h_h_b
+# End of MLP
 
 embd_in_data = list_vars["gpt_neox.embed_in.weight"]
 new_list_vars["embd_in"] = embd_in_data
