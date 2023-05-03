@@ -128,7 +128,7 @@ new_list_vars["c_mlp_4h_h_b"] = c_mlp_4h_h_b
 embd_in_data = list_vars["gpt_neox.embed_in.weight"]
 new_list_vars["embd_in"] = embd_in_data
 embd_out_data = list_vars["embed_out.weight"]
-new_list_vars["embd_out"] = embd_in_data
+new_list_vars["embd_out"] = embd_out_data
 
 
 for idx, name in enumerate(new_list_vars):

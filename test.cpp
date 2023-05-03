@@ -228,6 +228,8 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
 
         model.embed_in_wte = ggml_new_tensor_2d(ctx, wtype,  n_embd, n_vocab);
         model.embed_out_wte = ggml_new_tensor_2d(ctx, wtype, n_embd, n_vocab);
+        model.final_norm_w = ggml_new_tensor_1d(ctx, wtype, n_embd);
+        model.final_norm_b = ggml_new_tensor_1d(ctx, wtype, n_embd);
         model.tensors["embd_in"] = model.embed_in_wte;
         model.tensors["embd_out"] = model.embed_out_wte;
         model.tensors["final_norm_w"] = model.final_norm_w;
@@ -437,6 +439,9 @@ bool eval(
     struct ggml_tensor * inpL = ggml_get_rows(ctx0, model.embed_in_wte, embd);
     //ggml_build_forward_expand(&gf, inpL);
     ggml_tensor* inpSA_debug;
+    ggml_tensor* final_norm_debug;
+    ggml_tensor* out_debug;
+    ggml_tensor* logits;
 /*
     ggml_tensor* inp_normed_debug;
     ggml_tensor* q_debug;
@@ -626,10 +631,12 @@ bool eval(
                                 final_normed,
                                 ggml_repeat(ctx0,  model.final_norm_w, final_normed)),
                        ggml_repeat(ctx0, model.final_norm_b, final_normed));
+        final_norm_debug = final_normed;
 
         ggml_build_forward_expand(&gf, final_normed);
-        auto logits = ggml_mul_mat(ctx0, final_normed, model.embed_out_wte);
-
+        logits = ggml_mul_mat(ctx0,  model.embed_out_wte, final_normed);
+        out_debug = logits;
+        ggml_build_forward_expand(&gf, logits);
     }
     // run the computation
     ggml_build_forward_expand(&gf, inpL);
@@ -679,11 +686,12 @@ bool eval(
     std::cout << "==========qkv_merged_printing=============" << std::endl;
     debug_print_tensor_lite(qkv_merged_debug);
     std::cout << "==========qkv_merged_printend=============" << std::endl;
+    */
     std::cout << "==========qkv_densed_printing=============" << std::endl;
-    debug_print_tensor_lite(qkv_densed_debug);*/
+    debug_print_tensor_lite(final_norm_debug);
     std::cout << "==========qkv_densed_printend=============" << std::endl;
     std::cout << "==========qkv_after_mlp_printing=============" << std::endl;
-    debug_print_tensor_lite(qkv_copy);
+    debug_print_tensor_lite(out_debug);
     std::cout << "==========qkv_after_mlp_printend=============" << std::endl;
 
 
