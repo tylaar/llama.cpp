@@ -425,11 +425,11 @@ bool eval(
 
     struct ggml_tensor * embd = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, N);
     memcpy(embd->data, embd_inp.data(), N*ggml_element_size(embd));
-
     ggml_tensor *alpha = ggml_new_f32(ctx0, 0.1250);
     // embed_in_wte
     struct ggml_tensor * inpL = ggml_get_rows(ctx0, model.embed_in_wte, embd);
-
+    //ggml_build_forward_expand(&gf, inpL);
+    ggml_tensor* inpSA_debug;
     ggml_tensor* inp_normed_debug;
     ggml_tensor* q_debug;
     ggml_tensor* k_debug;
@@ -448,9 +448,13 @@ bool eval(
     ggml_tensor* qkv_merged_debug;
     ggml_tensor* qkv_densed_debug;
     ggml_tensor* qkv_copy;
+    ggml_tensor* embd_in_debug;
+    ggml_tensor* f_debug;
+    ggml_tensor* s_debug;
     for (int il = 0; il < n_layer; ++il) {
-        struct ggml_tensor * cur = inpL;
-
+        struct ggml_tensor *inpSA = inpL;
+        inpSA_debug = inpSA;
+        struct ggml_tensor * cur;
 
         {
             cur = ggml_norm(ctx0, inpL);
@@ -463,9 +467,16 @@ bool eval(
                            ggml_repeat(ctx0, model.layers[il].c_l_norm_b, cur));
         }
 
+        auto qkv_post_normed = ggml_norm(ctx0, inpL);
 
-        // Notice here we bypass out the cur pointer to inpSA for possible residual possibility
-        struct ggml_tensor * inpSA = cur;
+        // cur = ln_input_norm_w*cur + ln_input_norm_b
+        qkv_post_normed = ggml_add(ctx0,
+                                   ggml_mul(ctx0,
+                                            qkv_post_normed,
+                                            ggml_repeat(ctx0,  model.layers[il].c_p_l_norm_w, qkv_post_normed)),
+                                   ggml_repeat(ctx0, model.layers[il].c_p_l_norm_b, qkv_post_normed));
+
+
         inp_normed_debug = cur;
 
         // self-attention
@@ -482,16 +493,16 @@ bool eval(
             debug_print_tensor_lite(vw);
             // TODO: viewing in 3d with slicing problematic.
             auto q_cur = ggml_add(ctx0,
-                              ggml_mul_mat(ctx0, qw, inpSA),
-                              ggml_repeat(ctx0,  qb, inpSA));
+                              ggml_mul_mat(ctx0, qw, cur),
+                              ggml_repeat(ctx0,  qb, cur));
 
             auto k_cur = ggml_add(ctx0,
-                              ggml_mul_mat(ctx0, kw, inpSA),
-                              ggml_repeat(ctx0, kb, inpSA));
+                              ggml_mul_mat(ctx0, kw, cur),
+                              ggml_repeat(ctx0, kb, cur));
 
             auto v_cur = ggml_add(ctx0,
-                              ggml_mul_mat(ctx0, vw, inpSA),
-                              ggml_repeat(ctx0, vb, inpSA));
+                              ggml_mul_mat(ctx0, vw, cur),
+                              ggml_repeat(ctx0, vb, cur));
 
             q_reshape_debug = ggml_reshape_3d(ctx0, q_cur, n_embd / n_head, n_head, N);
             auto q = ggml_permute(ctx0,
@@ -540,18 +551,6 @@ bool eval(
 
             //lctx->use_buf(ctx0, 1);
 
-            auto qkv_post_normed = ggml_norm(ctx0, qkv_densed);
-
-            // cur = ln_input_norm_w*cur + ln_input_norm_b
-            qkv_post_normed = ggml_add(ctx0,
-                                       ggml_mul(ctx0,
-                                                qkv_post_normed,
-                                                ggml_repeat(ctx0,  model.layers[il].c_p_l_norm_w, qkv_post_normed)),
-                                       ggml_repeat(ctx0, model.layers[il].c_p_l_norm_b, qkv_post_normed));
-
-
-
-
             auto qkv_h_4h = ggml_mul_mat(ctx0, model.layers[il].c_mlp_h_to_4h_w, qkv_post_normed);
             qkv_h_4h = ggml_add(ctx0,
                                 qkv_h_4h,
@@ -559,16 +558,24 @@ bool eval(
 
             auto gelu_ed = ggml_gelu(ctx0, qkv_h_4h);
 
-
             auto qkv_4h_h = ggml_mul_mat(ctx0, model.layers[il].c_mlp_4h_to_h_w, gelu_ed);
             qkv_4h_h = ggml_add(ctx0,
                                 qkv_4h_h,
                                 ggml_repeat(ctx0, model.layers[il].c_mlp_4h_to_h_b, qkv_4h_h));
 
+            auto first_part = ggml_add(ctx0,qkv_densed, inpSA);
+            f_debug = first_part;
+            auto second_part = qkv_4h_h;
+            s_debug = second_part;
+            auto qkv_res = ggml_add(ctx0,
+                                    first_part, second_part
+            );
+            //qkv_res = ggml_add(ctx0, qkv_res, qkv_4h_h);
 
-            qkv_copy = qkv_4h_h;
+            qkv_copy = qkv_res;
             //ggml_build_forward_expand(&gf, qkv_t);
             //ggml_build_forward_expand(&gf, qkv_t_reshaped);
+            ggml_build_forward_expand(&gf, inpSA);
             ggml_build_forward_expand(&gf, q);
             ggml_build_forward_expand(&gf, k);
             ggml_build_forward_expand(&gf, v);
@@ -579,6 +586,8 @@ bool eval(
             ggml_build_forward_expand(&gf, qkv_output);
             ggml_build_forward_expand(&gf, qkv_merged);
             ggml_build_forward_expand(&gf, qkv_densed);
+            ggml_build_forward_expand(&gf, first_part);
+            ggml_build_forward_expand(&gf, second_part);
 
             // Below are for debugging purpose
             ggml_build_forward_expand(&gf, qkv_copy);
@@ -605,7 +614,7 @@ bool eval(
     //debug_print_tensor(gf.nodes[6]);
     //debug_print_tensor(gf.nodes[7]);
     std::cout << "==========input_normed_printing=============" << std::endl;
-    debug_print_tensor_lite(inp_normed_debug);
+    debug_print_tensor_lite(inpSA_debug);
     std::cout << "==========input_normed_printend=============" << std::endl;
 
     debug_print_tensor_lite(q_debug);

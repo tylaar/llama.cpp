@@ -130,8 +130,8 @@ nn_dense.bias.data = layer_dense_bias
 
 embd_idx = torch.tensor([12092, 13, 309, 717])
 
-selected_embd = embd_in(embd_idx)
-selected_embd = layer_norm(selected_embd)
+selected_embd_original = embd_in(embd_idx)
+selected_embd = layer_norm(selected_embd_original)
 print("=====original attn_k_v_w=====")
 print(c_attn_k_v_w)
 qkv = torch.add(
@@ -263,13 +263,14 @@ print("done")
 
 
 print("*******************post_normed*******************")
-post_normed = post_layer_norm(densed)
+post_normed = post_layer_norm(selected_embd_original)
 print(post_normed)
 higher = nn_h_to_4h(post_normed)
 gelued = gelu.forward(higher)
 lower = nn_4h_to_h(gelued)
 print(lower)
-
-
+print("==================================================")
+residual = densed + selected_embd_original + lower
+print(residual)
 # do the _attn_ part
 print("done")
