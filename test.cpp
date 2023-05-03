@@ -430,6 +430,7 @@ bool eval(
     struct ggml_tensor * inpL = ggml_get_rows(ctx0, model.embed_in_wte, embd);
     //ggml_build_forward_expand(&gf, inpL);
     ggml_tensor* inpSA_debug;
+/*
     ggml_tensor* inp_normed_debug;
     ggml_tensor* q_debug;
     ggml_tensor* k_debug;
@@ -447,10 +448,8 @@ bool eval(
     ggml_tensor *qkv_permuted_debug;
     ggml_tensor* qkv_merged_debug;
     ggml_tensor* qkv_densed_debug;
+*/
     ggml_tensor* qkv_copy;
-    ggml_tensor* embd_in_debug;
-    ggml_tensor* f_debug;
-    ggml_tensor* s_debug;
     for (int il = 0; il < n_layer; ++il) {
         struct ggml_tensor *inpSA = inpL;
         inpSA_debug = inpSA;
@@ -477,7 +476,7 @@ bool eval(
                                    ggml_repeat(ctx0, model.layers[il].c_p_l_norm_b, qkv_post_normed));
 
 
-        inp_normed_debug = cur;
+        //inp_normed_debug = cur;
 
         // self-attention
         {
@@ -504,50 +503,50 @@ bool eval(
                               ggml_mul_mat(ctx0, vw, cur),
                               ggml_repeat(ctx0, vb, cur));
 
-            q_reshape_debug = ggml_reshape_3d(ctx0, q_cur, n_embd / n_head, n_head, N);
+            // q_reshape_debug = ggml_reshape_3d(ctx0, q_cur, n_embd / n_head, n_head, N);
             auto q = ggml_permute(ctx0,
-                             q_reshape_debug,
+                                  ggml_reshape_3d(ctx0, q_cur, n_embd / n_head, n_head, N),
                                   0, 2, 1, 3);
-            k_reshape_debug = ggml_reshape_3d(ctx0, k_cur, n_embd / n_head, n_head, N);
+            // k_reshape_debug = ggml_reshape_3d(ctx0, k_cur, n_embd / n_head, n_head, N);
             auto k = ggml_permute(ctx0,
-                             k_reshape_debug,
+                                  ggml_reshape_3d(ctx0, k_cur, n_embd / n_head, n_head, N),
                              0, 2, 1, 3);
-            v_reshape_debug = ggml_reshape_3d(ctx0, v_cur, n_embd / n_head, n_head, N);
+            //v_reshape_debug = ggml_reshape_3d(ctx0, v_cur, n_embd / n_head, n_head, N);
             auto v_permuted = ggml_permute(ctx0,
-                                      v_reshape_debug,
+                                           ggml_reshape_3d(ctx0, v_cur, n_embd / n_head, n_head, N),
                                       1, 2, 0, 3);
             auto v = ggml_cpy(ctx0,
                               v_permuted,
                               ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, v_permuted->ne[0], v_permuted->ne[1], v_permuted->ne[2]));
-            q_debug = q;
-            k_debug = k;
-            v_debug = v;
+            //q_debug = q;
+            //k_debug = k;
+            //v_debug = v;
 
             auto qk = ggml_mul_mat(ctx0, k, q);
-            qk_debug = qk;
+            //qk_debug = qk;
             auto qk_scaled = ggml_scale(ctx0, qk, alpha);
-            qk_scaled_debug = qk_scaled;
+            //qk_scaled_debug = qk_scaled;
             auto qk_causal_masked = ggml_diag_mask_inf(ctx0, qk_scaled, 0);
-            qk_causal_masked_debug = qk_causal_masked;
+            //qk_causal_masked_debug = qk_causal_masked;
             auto qk_softmax = ggml_soft_max(ctx0, qk_causal_masked);
-            qk_softmax_debug = qk_softmax;
+            //qk_softmax_debug = qk_softmax;
 
             auto qkv_output = ggml_mul_mat(ctx0, qk_softmax, v);
-            qkv_output_debug = qkv_output;
+            //qkv_output_debug = qkv_output;
 
             auto qkv_permuted =
                     ggml_permute(ctx0,
                                  ggml_permute(ctx0, qkv_output, 1, 0, 2, 3),
                                  0, 2, 1, 3);
-            qkv_permuted_debug = qkv_permuted;
+            //qkv_permuted_debug = qkv_permuted;
             auto qkv_merged = ggml_cpy(ctx0,
                            qkv_permuted,
                            ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_embd, N));
-            qkv_merged_debug = qkv_merged;
+            //qkv_merged_debug = qkv_merged;
             auto qkv_densed = ggml_add(ctx0,
                                        ggml_mul_mat(ctx0, model.layers[il].c_l_dense_w, qkv_merged),
                                        ggml_repeat(ctx0, model.layers[il].c_l_dense_b, qkv_merged));
-            qkv_densed_debug = qkv_densed;
+            //qkv_densed_debug = qkv_densed;
 
             //lctx->use_buf(ctx0, 1);
 
@@ -564,9 +563,9 @@ bool eval(
                                 ggml_repeat(ctx0, model.layers[il].c_mlp_4h_to_h_b, qkv_4h_h));
 
             auto first_part = ggml_add(ctx0,qkv_densed, inpSA);
-            f_debug = first_part;
+            //f_debug = first_part;
             auto second_part = qkv_4h_h;
-            s_debug = second_part;
+            //s_debug = second_part;
             auto qkv_res = ggml_add(ctx0,
                                     first_part, second_part
             );
@@ -591,6 +590,7 @@ bool eval(
 
             // Below are for debugging purpose
             ggml_build_forward_expand(&gf, qkv_copy);
+/*
             ggml_build_forward_expand(&gf, inp_normed_debug);
             ggml_build_forward_expand(&gf, q_reshape_debug);
             ggml_build_forward_expand(&gf, k_reshape_debug);
@@ -602,6 +602,7 @@ bool eval(
             ggml_build_forward_expand(&gf, qkv_output_debug);
             ggml_build_forward_expand(&gf, qkv_merged_debug);
             ggml_build_forward_expand(&gf, qkv_densed_debug);
+*/
 
             std::cout << "current q nelements:" << ggml_nelements(q) <<  " k nelem: " << ggml_nelements(k) << " v nelems:" << ggml_nelements(v) << std::endl;
         }
@@ -616,7 +617,7 @@ bool eval(
     std::cout << "==========input_normed_printing=============" << std::endl;
     debug_print_tensor_lite(inpSA_debug);
     std::cout << "==========input_normed_printend=============" << std::endl;
-
+/*
     debug_print_tensor_lite(q_debug);
     std::cout << "==========query_reshape_printing=============" << std::endl;
     debug_print_tensor_lite(q_reshape_debug);
@@ -657,7 +658,7 @@ bool eval(
     debug_print_tensor_lite(qkv_merged_debug);
     std::cout << "==========qkv_merged_printend=============" << std::endl;
     std::cout << "==========qkv_densed_printing=============" << std::endl;
-    debug_print_tensor_lite(qkv_densed_debug);
+    debug_print_tensor_lite(qkv_densed_debug);*/
     std::cout << "==========qkv_densed_printend=============" << std::endl;
     std::cout << "==========qkv_after_mlp_printing=============" << std::endl;
     debug_print_tensor_lite(qkv_copy);
