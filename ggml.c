@@ -565,9 +565,22 @@ static void debug_print_tensor_1d(struct ggml_tensor* target) {
     fprintf(stderr, "[1D matrix] print done.\n");
 }
 
+static void debug_print_tensor_1d_lite(struct ggml_tensor* target) {
+    int type_size = ggml_type_sizef(target->type);
+    fprintf(stderr, "[1D matrix lite] m_dim_0=%d, m_dim_1=%d type_size=%d\n", target->ne[0], type_size);
+    fprintf(stderr, "\n[");
+    //for (int i = 0 ; i < target->ne[0]; i++) {
+    int64_t i = target->ne[0] - 1;
+    fprintf(stderr, "%f ... %f", *(float*)((char*)target->data), *(float*)((char*)target->data + i*type_size));
+    //}
+    fprintf(stderr, "]\n");
+    fprintf(stderr, "[1D matrix lite] print done.\n");
+}
+
+
 static void debug_print_tensor_2d(struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
-    fprintf(stderr, "[2D matrix] m_dim_0=%d, m_dim_1=%d type_size=%d\n", target->ne[0], target->ne[1], type_size);
+    fprintf(stderr, "[2D matrix lite] m_dim_0=%d, m_dim_1=%d type_size=%d\n", target->ne[0], target->ne[1], type_size);
     for (int i = 0 ; i < target->ne[1]; i++) {
         fprintf(stderr, "\n[");
         for (int j = 0 ; j < target->ne[0]; j++) {
@@ -575,9 +588,27 @@ static void debug_print_tensor_2d(struct ggml_tensor* target) {
         }
         fprintf(stderr, "]");
     }
-    fprintf(stderr, "\n[2D matrix] print done.\n");
+    fprintf(stderr, "\n[2D matrix lite] print done.\n");
 
 }
+
+static void debug_print_tensor_2d_lite(struct ggml_tensor* target) {
+    int type_size = ggml_type_sizef(target->type);
+    fprintf(stderr, "[2D matrix lite] m_dim_0=%d, m_dim_1=%d type_size=%d\n", target->ne[0], target->ne[1], type_size);
+    for (int i = 0 ; i < target->ne[1]; i+=target->ne[1] - 1) {
+        fprintf(stderr, "\n[");
+        //for (int j = 0 ; j < target->ne[0]; j++) {
+        int64_t j = target->ne[0] - 1;
+        fprintf(stderr, "%f ... %f",
+                (*(float*)((char*)target->data + i*target->nb[1])),
+                (*(float*)((char*)target->data + i*target->nb[1]+ j*target->nb[0])));
+        //}
+        fprintf(stderr, "]");
+    }
+    fprintf(stderr, "\n[2D matrix lite] print done.\n");
+
+}
+
 static void debug_print_tensor_3d(struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[3D matrix] m_dim_0=%d, m_dim_1=%d, m_dim_2=%d, type_size=%d\n", target->ne[0], target->ne[1], target->ne[2], type_size);
@@ -602,6 +633,33 @@ static void debug_print_tensor_3d(struct ggml_tensor* target) {
     fprintf(stderr, "[3D matrix] print done.\n");
 }
 
+static void debug_print_tensor_3d_lite(struct ggml_tensor* target) {
+    int type_size = ggml_type_sizef(target->type);
+    fprintf(stderr, "[3D matrix] m_dim_0=%d, m_dim_1=%d, m_dim_2=%d, type_size=%d\n", target->ne[0], target->ne[1], target->ne[2], type_size);
+    for (int i = 0 ; i < target->ne[2]; i++) {
+        fprintf(stderr, "[\n");
+        for (int j = 0 ; j < target->ne[1]; j += target->ne[1] - 1) {
+            fprintf(stderr, "    [");
+            //for (int k = 0 ; k < target->ne[0]; k++) {
+/*
+                int64_t outside_idx = i*target->ne[0]*target->ne[1];
+                int64_t outside_idx_d = target->nb[2];
+                int64_t inside_idx = j*target->ne[0];
+                int64_t inside_idx_d = target->nb[1];
+                fprintf(stderr, "\nout_idx: %d, out_d_idx: %d, inside_idx: %d, inside_d_idx: %d\n", outside_idx, outside_idx_d, inside_idx, inside_idx_d);
+*/
+            int64_t k = target->ne[0] - 1;
+            fprintf(stderr, "%f ... %f",
+                    (*(float*)((char*)target->data + i*target->nb[2] + j*target->nb[1])),
+                    (*(float*)((char*)target->data + i*target->nb[2] + j*target->nb[1] + k*target->nb[0])));
+            //}
+            fprintf(stderr, "]\n");
+        }
+        fprintf(stderr, "]\n");
+    }
+    fprintf(stderr, "[3D matrix] print done.\n");
+}
+
 void debug_print_tensor_3d_as_1d(struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[3D -> 1D] m_dim_0=%d, m_dim_1=%d, m_dim_2=%d, type_size=%d\n[", target->ne[0], target->ne[1], target->ne[2], type_size);
@@ -618,6 +676,26 @@ void debug_print_tensor_2d_as_1d(struct ggml_tensor* target) {
         fprintf(stderr, "%f ", *(float*)((char*)target->data + i*type_size));
     }
     fprintf(stderr, "]\n");
+}
+
+void debug_print_tensor_lite(struct ggml_tensor* target) {
+    if (target->type != GGML_TYPE_F32) {
+        fprintf(stderr, "[DEBUG] not supporting type %d", target->type);
+        return;
+    }
+    if (target->n_dims > 3) {
+        fprintf(stderr, "[DEBUG] currently only support 2 dim matrix");
+        return;
+    }
+
+    //int type_size = ggml_type_sizef(target->type);
+    if (target->n_dims == 1) {
+        debug_print_tensor_1d_lite(target);
+    } else if (target->n_dims == 2) {
+        debug_print_tensor_2d_lite(target);
+    } else if (target->n_dims == 3) {
+        debug_print_tensor_3d_lite(target);
+    }
 }
 
 void debug_print_tensor(struct ggml_tensor* target) {
@@ -1858,7 +1936,7 @@ inline static ggml_float ggml_vec_dot_f32(const int n, float * restrict s, const
     // leftovers
     for (int i = np; i < n; ++i) {
         double res = x[i]*y[i];
-        //fprintf(stderr, "x[%d](%f) * y[%d](%f) = %f\n", i, x[i], i, y[i], res);
+        fprintf(stderr, "x[%d](%f) * y[%d](%f) = %f\n", i, x[i], i, y[i], res);
         sumf += res;
     }
 #else
@@ -6475,7 +6553,7 @@ static void ggml_compute_forward_mul_mat_f32(
                              (float *) ((char *) src1->data + (i11*nb11 + i12*nb12 + i13*nb13)));
         }
     }
-    //debug_print_tensor(dst);
+    debug_print_tensor_lite(dst);
 
     //int64_t t1 = ggml_perf_time_us();
     //static int64_t acc = 0;

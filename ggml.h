@@ -384,6 +384,7 @@ struct ggml_tensor * ggml_new_tensor_4d(
         int64_t ne3);
 
 void debug_print_tensor(struct ggml_tensor* target);
+void debug_print_tensor_lite(struct ggml_tensor* target);
 void debug_print_tensor_3d_as_1d(struct ggml_tensor* target);
 void debug_print_tensor_2d_as_1d(struct ggml_tensor* target);
 

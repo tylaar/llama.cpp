@@ -32,6 +32,9 @@ def generate_diag_mask(max_ndims):
                 z[i][j] = 1.0
     return torch.gt(z, 0.0)
 
+def print_2d_tensor_only_four(t):
+    print("[", t[0][0], "...", t[0][-1], "]\n[", t[-1][0], "...", t[-1][-1], "]\n")
+
 # Meta preparation stage.
 vocab_size = 50304
 # fout.write(struct.pack("i", 10))
@@ -63,13 +66,12 @@ c_attn_v_idx = np.array([], dtype=int)
 
 head_size = int(n_embd / n_head)
 
-list_vars = model.state_dict()
-
 for i in range(n_head):
     c_attn_q_idx = np.concatenate([c_attn_q_idx, np.arange(i*3*head_size, i*3*head_size+head_size, 1, dtype=int)])
 c_attn_k_idx = c_attn_q_idx + n_embd/n_head
 c_attn_v_idx = c_attn_k_idx + n_embd/n_head
 
+list_vars = model.state_dict()
 
 layer_norm_w = list_vars["gpt_neox.layers.0.input_layernorm.weight"]
 layer_norm_b = list_vars["gpt_neox.layers.0.input_layernorm.bias"]
@@ -91,12 +93,14 @@ c_attn_q_b = c_attn_k_v_b[c_attn_q_idx]
 c_attn_k_b = c_attn_k_v_b[c_attn_k_idx]
 c_attn_v_b = c_attn_k_v_b[c_attn_v_idx]
 
+embd_in_data = list_vars["gpt_neox.embed_in.weight"]
+embd_out_data = list_vars["embed_out.weight"]
 
 # starting to evaluate
 embd_in = nn.Embedding(vocab_size, n_embd)
-embd_in.weight.data = list_vars["gpt_neox.embed_in.weight"]
+embd_in.weight.data = embd_in_data
 embd_out = nn.Embedding(vocab_size, n_embd)
-embd_out.weight.data = list_vars["embed_out.weight"]
+embd_out.weight.data = embd_out_data
 
 layer_norm = nn.LayerNorm(n_embd)
 layer_norm.weight.data = layer_norm_w
@@ -135,7 +139,7 @@ query = qkv[..., : head_size].permute(0, 2, 1, 3)
 key = qkv[..., head_size : 2 * head_size].permute(0, 2, 1, 3)
 value = qkv[..., 2 * head_size :].permute(0, 2, 1, 3)
 
-print("normal query: \n", query)
+# print("normal query: \n", query)
 
 # TODO: below part is just trying to minic qkv separated into q, k, v
 q = torch.add(
@@ -150,14 +154,10 @@ v = torch.add(
     torch.matmul(selected_embd, c_attn_v),
     c_attn_v_b
 )
-print("self q:\n", q)
-print("done")
-
-qkv_permute = torch.Size([4, n_head, head_size])
-q_n = q.view(*qkv_permute)
-k_n = k.view(*qkv_permute)
-v_n = v.view(*qkv_permute)
-print(q_n)
+akv_reshaped = torch.Size([4, n_head, head_size])
+q_n = q.view(*akv_reshaped)
+k_n = k.view(*akv_reshaped)
+v_n = v.view(*akv_reshaped)
 
 #print(q_n.permute(0, 2, 1))
 #print(q_n.permute(1, 2, 0))
