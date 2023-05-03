@@ -58,6 +58,10 @@ struct test_model {
     struct ggml_tensor *embed_out_wte;
 
     std::vector<test_layer> layers;
+
+    struct ggml_tensor *final_norm_w;
+    struct ggml_tensor *final_norm_b;
+
     struct ggml_tensor * memory_k;
     struct ggml_tensor * memory_v;
 
@@ -165,7 +169,8 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
 
     ctx_size += n_embd*n_vocab*ggml_type_sizef(wtype); // embed_in_wte
     ctx_size += n_embd*n_vocab* ggml_type_sizef(wtype); // embed_out_wte
-
+    ctx_size += n_embd * ggml_type_sizef(wtype); // final norm weight
+    ctx_size += n_embd * ggml_type_sizef(wtype);
     {
         ctx_size += n_layer*(3*n_embd*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_k_v_w TODO: in qkv in total, not isolated yet.
         ctx_size += n_layer*(3*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_k_v_b;
@@ -225,6 +230,8 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
         model.embed_out_wte = ggml_new_tensor_2d(ctx, wtype, n_embd, n_vocab);
         model.tensors["embd_in"] = model.embed_in_wte;
         model.tensors["embd_out"] = model.embed_out_wte;
+        model.tensors["final_norm_w"] = model.final_norm_w;
+        model.tensors["final_norm_b"] = model.final_norm_b;
         for (int i = 0 ; i < n_layer; i++) {
             auto & layer = model.layers[i];
 
@@ -609,6 +616,21 @@ bool eval(
 
     }
 
+    {
+        // final norm
+        auto final_normed = ggml_norm(ctx0, qkv_copy);
+
+        // cur = ln_input_norm_w*cur + ln_input_norm_b
+        final_normed = ggml_add(ctx0,
+                       ggml_mul(ctx0,
+                                final_normed,
+                                ggml_repeat(ctx0,  model.final_norm_w, final_normed)),
+                       ggml_repeat(ctx0, model.final_norm_b, final_normed));
+
+        ggml_build_forward_expand(&gf, final_normed);
+        auto logits = ggml_mul_mat(ctx0, final_normed, model.embed_out_wte);
+
+    }
     // run the computation
     ggml_build_forward_expand(&gf, inpL);
     ggml_graph_compute       (ctx0, &gf);

@@ -83,7 +83,10 @@ layer_dense_weight = list_vars["gpt_neox.layers.0.attention.dense.weight"]
 new_list_vars["c_l_dense_w"] = layer_dense_weight
 layer_dense_bias = list_vars["gpt_neox.layers.0.attention.dense.bias"]
 new_list_vars["c_l_dense_b"] = layer_dense_bias
-
+final_norm_w = list_vars["gpt_neox.final_layer_norm.weight"]
+new_list_vars["final_norm_w"] = final_norm_w
+final_norm_b = list_vars["gpt_neox.final_layer_norm.bias"]
+new_list_vars["final_norm_b"] = final_norm_b
 #
 # starting isolate out qkv part.
 #

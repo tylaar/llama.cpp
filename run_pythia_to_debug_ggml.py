@@ -82,6 +82,9 @@ post_layer_norm_b = list_vars["gpt_neox.layers.0.post_attention_layernorm.bias"]
 layer_dense_weight = list_vars["gpt_neox.layers.0.attention.dense.weight"]
 layer_dense_bias = list_vars["gpt_neox.layers.0.attention.dense.bias"]
 
+final_norm_w = list_vars["gpt_neox.final_layer_norm.weight"]
+final_norm_b = list_vars["gpt_neox.final_layer_norm.bias"]
+
 c_attn_k_v_w = list_vars["gpt_neox.layers.0.attention.query_key_value.weight"]
 c_attn_k_v_w = torch.transpose(c_attn_k_v_w, 0, 1)
 c_attn_k_v_b = list_vars["gpt_neox.layers.0.attention.query_key_value.bias"]
@@ -99,8 +102,12 @@ embd_out_data = list_vars["embed_out.weight"]
 # starting to evaluate
 embd_in = nn.Embedding(vocab_size, n_embd)
 embd_in.weight.data = embd_in_data
-embd_out = nn.Embedding(vocab_size, n_embd)
+embd_out = nn.Linear(n_embd, vocab_size, bias=False)
 embd_out.weight.data = embd_out_data
+
+final_norm = nn.LayerNorm(n_embd)
+final_norm.weight.data = final_norm_w
+final_norm.bias.data = final_norm_b
 
 layer_norm = nn.LayerNorm(n_embd)
 layer_norm.weight.data = layer_norm_w
@@ -273,4 +280,12 @@ print("==================================================")
 residual = densed + selected_embd_original + lower
 print(residual)
 # do the _attn_ part
+final_normed = final_norm(residual)
+print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+print(final_normed)
+print("--------------------------------------------------")
+logits = embd_out(final_normed)
+logits = logits[:, -1, :]
+print(logits)
+print(torch.argmax(logits, dim=-1))
 print("done")
