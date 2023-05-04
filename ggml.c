@@ -7037,6 +7037,8 @@ static void ggml_compute_forward_scale_f32(
     GGML_ASSERT(ggml_are_same_shape(src0, dst));
     GGML_ASSERT(ggml_is_scalar(src1));
 
+    fprintf(stderr, "====================before scale alpha ================");
+    debug_print_tensor(src0);
     if (params->type == GGML_TASK_INIT || params->type == GGML_TASK_FINALIZE) {
         return;
     }
@@ -7060,6 +7062,9 @@ static void ggml_compute_forward_scale_f32(
     for (int i1 = ir0; i1 < ir1; i1++) {
         ggml_vec_scale_f32(nc, (float *) ((char *) dst->data + i1*(dst->nb[1])), v);
     }
+    fprintf(stderr, "====================after scale alpha ================");
+    debug_print_tensor(dst);
+
 }
 
 static void ggml_compute_forward_scale(
@@ -7340,6 +7345,8 @@ static void ggml_compute_forward_soft_max_f32(
     GGML_ASSERT(ggml_is_contiguous(dst));
     GGML_ASSERT(ggml_are_same_shape(src0, dst));
 
+    fprintf(stderr, "Before softmax ....");
+    debug_print_tensor(src0);
     if (params->type == GGML_TASK_INIT || params->type == GGML_TASK_FINALIZE) {
         return;
     }
@@ -7400,6 +7407,8 @@ static void ggml_compute_forward_soft_max_f32(
         }
 #endif
     }
+    fprintf(stderr, "After softmax ....");
+    debug_print_tensor(dst);
 }
 
 static void ggml_compute_forward_soft_max(
@@ -7473,7 +7482,8 @@ static void ggml_compute_forward_rope_f32(
     // row index used to determine which thread to use
     int ir = 0;
 
-    debug_print_tensor_3d(src0);
+    float temp[64] = {0.0};
+    //debug_print_tensor_3d(src0);
     // TODO: hacked by yifeng, directly slice only 1/4 of the each lastest elements.
     for (int64_t i3 = 0; i3 < ne3; i3++) {
         for (int64_t i2 = (mode == 0 ? 0 : n_past); i2 < ne2; i2++) {
@@ -7481,8 +7491,69 @@ static void ggml_compute_forward_rope_f32(
             for (int64_t i1 = 0; i1 < ne1; i1++) {
                 if (ir++ < ir0) continue;
                 if (ir   > ir1) break;
+                int b = 0;
+                int i0 = 0;
+                int first_half_offset = i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0;
+                int second_half_offset = i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0 + (n_dims/2)*nb0;
+                // first half
+                for (; i0 < n_dims / 2; i0++) {
+                    b = i0 * 2;
+                    const float theta = powf(10000.0, ((float)-(b))/n_dims);
+
+                    const float cos_theta = cosf(p*theta);
+                    const float sin_theta = sinf(p*theta);
+
+                    const int f_offset = i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0;
+                    const int s_offset = i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0 + (n_dims/2)*nb0;
+                    const float * const first_src = (float *)((char *) src0->data + f_offset);
+                    const float * const second_src = (float *)((char *) src0->data + s_offset);
+                    float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
+
+                    const float x0 = first_src[0];
+                    const float x1 = second_src[0];
+                    temp[i0] = x0;
+
+                    float x0cos = x0*cos_theta;
+                    float x1sin = x1*sin_theta;
+
+                    dst_data[0] = x0cos - x1sin;
+                    fprintf(stderr, "[FIRST_HALF] x0: %f, x1: %f, cos: %f, sin: %f, x0cos: %f, x1sin: %f, dst_0: %f\n",
+                            x0, x1, cos_theta, sin_theta, x0cos, x1sin, dst_data[0]);
+                }
+
+                int i00 = 0;
+                for (; i0 < n_dims; i0++, i00++) {
+                    b = i0 * 2 - n_dims;
+                    const float theta = powf(10000.0, ((float)-(b))/n_dims);
+
+                    const float cos_theta = cosf(p*theta);
+                    const float sin_theta = sinf(p*theta);
+
+                    const int f_offset = i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0;
+                    //const int s_offset = i3*nb3 + i2*nb2 + i1*nb1 + i00*nb0;
+                    const float * const first_src = (float *)((char *) src0->data + f_offset);
+                    //const float * const second_src = (float *)((char *) src0->data + s_offset);
+                    float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
+
+                    const float x0 = first_src[0];
+                    const float x1 = temp[i00];
+
+                    float x0cos = x0*cos_theta;
+                    float x1sin = x1*sin_theta;
+
+                    dst_data[0] = x0cos + x1sin;
+                    fprintf(stderr, "[SECOND_HALF] x0: %f, x1: %f, cos: %f, sin: %f, x0cos: %f, x1sin: %f, dst_0: %f\n",
+                            x0, x1, cos_theta, sin_theta, x0cos, x1sin, dst_data[0]);
+                }
+                fprintf(stderr, "[TWO_HALF] done for %d %d %d:\n", i2, i1, i0);
+
+/*
                 for (int i0 = 0; i0 < n_dims ; i0 += 1) {
-                    const float theta = powf(10000.0, ((float)-(i0*2))/n_dims);
+                    b = i0 * 2;
+                    if (b >= n_dims) {
+                        b -= n_dims;
+                    }
+                    const float theta = powf(10000.0, ((float)-(b))/n_dims);
 
                     const float cos_theta = cosf(p*theta);
                     const float sin_theta = sinf(p*theta);
@@ -7504,6 +7575,7 @@ static void ggml_compute_forward_rope_f32(
                     fprintf(stderr, "x0: %f, x1: %f, cos: %f, sin: %f, x0cos: %f, x0sin: %f, x1cos: %f, x1sin: %f, dst_0: %f\n",
                             x0, x1, cos_theta, sin_theta, x0cos, x0sin, x1cos, x1sin, dst_data[0]);
                 }
+*/
                 fprintf(stderr, "finished round %d * %d\n", i2, i1);
             }
         }

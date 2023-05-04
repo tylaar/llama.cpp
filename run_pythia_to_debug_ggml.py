@@ -81,6 +81,7 @@ def generate_diag_mask(max_ndims):
 def print_2d_tensor_only_four(t):
     print("[", t[0][0], "...", t[0][-1], "]\n[", t[-1][0], "...", t[-1][-1], "]\n")
 
+torch.set_printoptions(sci_mode=False, linewidth=400)
 # Meta preparation stage.
 vocab_size = 50304
 # fout.write(struct.pack("i", 10))

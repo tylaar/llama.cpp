@@ -1,6 +1,10 @@
 from transformers import GPTNeoXForCausalLM, AutoTokenizer
 
+import torch
+
 dir_model = "/Users/yifengyu/hack/models"
+
+torch.set_printoptions(sci_mode=False, linewidth=400)
 
 model = GPTNeoXForCausalLM.from_pretrained(
     dir_model + "/pythia-70m",
