@@ -255,7 +255,19 @@ key_pass = k_n_p[..., n_rot :]
 # Do rotary embedding
 cos, sin = rotary_emb(v_n_p, 4)
 
+print("==================query pending rot====================")
+print(query_rot)
+#print("==================key pending rot====================")
+#print(key_rot)
+
 q_r, k_r = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, torch.Tensor([[0, 1, 2, 3]]).long())
+
+print("==================query rotated====================")
+print(q_r)
+#print("==================key rotated====================")
+#print(k_r)
+
+
 q_n_p = torch.cat((q_r, query_pass), dim=-1)
 k_n_p = torch.cat((k_r, key_pass), dim=-1)
 # starting to do the fucking attention here.

@@ -553,7 +553,7 @@ static void quantize_row_q4_0_reference(const float * restrict x, block_q4_0 * r
     }
 }
 
-static void debug_print_tensor_1d(struct ggml_tensor* target) {
+static void debug_print_tensor_1d(const struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[1D matrix] m_dim_0=%d, m_dim_1=%d type_size=%d\n", target->ne[0], type_size);
     fprintf(stderr, "\n[");
@@ -565,7 +565,7 @@ static void debug_print_tensor_1d(struct ggml_tensor* target) {
     fprintf(stderr, "[1D matrix] print done.\n");
 }
 
-static void debug_print_tensor_1d_lite(struct ggml_tensor* target) {
+static void debug_print_tensor_1d_lite(const struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[1D matrix lite] m_dim_0=%d, m_dim_1=%d type_size=%d\n", target->ne[0], type_size);
     fprintf(stderr, "\n[");
@@ -578,7 +578,7 @@ static void debug_print_tensor_1d_lite(struct ggml_tensor* target) {
 }
 
 
-static void debug_print_tensor_2d(struct ggml_tensor* target) {
+static void debug_print_tensor_2d(const struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[2D matrix lite] m_dim_0=%d, m_dim_1=%d type_size=%d\n", target->ne[0], target->ne[1], type_size);
     for (int i = 0 ; i < target->ne[1]; i++) {
@@ -592,7 +592,7 @@ static void debug_print_tensor_2d(struct ggml_tensor* target) {
 
 }
 
-static void debug_print_tensor_2d_lite(struct ggml_tensor* target) {
+static void debug_print_tensor_2d_lite(const struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[2D matrix lite] m_dim_0=%d, m_dim_1=%d type_size=%d\n", target->ne[0], target->ne[1], type_size);
     for (int i = 0 ; i < target->ne[1]; i+=target->ne[1] - 1) {
@@ -609,7 +609,7 @@ static void debug_print_tensor_2d_lite(struct ggml_tensor* target) {
 
 }
 
-static void debug_print_tensor_3d(struct ggml_tensor* target) {
+static void debug_print_tensor_3d(const struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[3D matrix] m_dim_0=%d, m_dim_1=%d, m_dim_2=%d, type_size=%d\n", target->ne[0], target->ne[1], target->ne[2], type_size);
     for (int i = 0 ; i < target->ne[2]; i++) {
@@ -633,7 +633,7 @@ static void debug_print_tensor_3d(struct ggml_tensor* target) {
     fprintf(stderr, "[3D matrix] print done.\n");
 }
 
-static void debug_print_tensor_3d_lite(struct ggml_tensor* target) {
+static void debug_print_tensor_3d_lite(const struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[3D matrix] m_dim_0=%d, m_dim_1=%d, m_dim_2=%d, type_size=%d\n", target->ne[0], target->ne[1], target->ne[2], type_size);
     for (int i = 0 ; i < target->ne[2]; i++) {
@@ -660,7 +660,7 @@ static void debug_print_tensor_3d_lite(struct ggml_tensor* target) {
     fprintf(stderr, "[3D matrix] print done.\n");
 }
 
-void debug_print_tensor_3d_as_1d(struct ggml_tensor* target) {
+void debug_print_tensor_3d_as_1d(const struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[3D -> 1D] m_dim_0=%d, m_dim_1=%d, m_dim_2=%d, type_size=%d\n[", target->ne[0], target->ne[1], target->ne[2], type_size);
     for (int i = 0 ; i < target->ne[0] * target->ne[1] * target->ne[2]; i++) {
@@ -669,7 +669,7 @@ void debug_print_tensor_3d_as_1d(struct ggml_tensor* target) {
     fprintf(stderr, "]\n");
 }
 
-void debug_print_tensor_2d_as_1d(struct ggml_tensor* target) {
+void debug_print_tensor_2d_as_1d(const struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[2D -> 1D] m_dim_0=%d, m_dim_1=%d, type_size=%d\n[", target->ne[0], target->ne[1], type_size);
     for (int i = 0 ; i < target->ne[0] * target->ne[1]; i++) {
@@ -678,7 +678,7 @@ void debug_print_tensor_2d_as_1d(struct ggml_tensor* target) {
     fprintf(stderr, "]\n");
 }
 
-void debug_print_tensor_lite(struct ggml_tensor* target) {
+void debug_print_tensor_lite(const struct ggml_tensor* target) {
     if (target->type != GGML_TYPE_F32) {
         fprintf(stderr, "[DEBUG] not supporting type %d", target->type);
         return;
@@ -698,7 +698,7 @@ void debug_print_tensor_lite(struct ggml_tensor* target) {
     }
 }
 
-void debug_print_tensor(struct ggml_tensor* target) {
+void debug_print_tensor(const struct ggml_tensor* target) {
     if (target->type != GGML_TYPE_F32) {
         fprintf(stderr, "[DEBUG] not supporting type %d", target->type);
         return;
@@ -4937,7 +4937,7 @@ struct ggml_tensor * ggml_rope(
     result->op   = GGML_OP_ROPE;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src0 = a;
-    result->src1 = b;
+    result->src1 = b; // Src1 is how to do sin and cos on how many dimension.
 
     return result;
 }
@@ -7460,6 +7460,7 @@ static void ggml_compute_forward_rope_f32(
     const int ith = params->ith;
     const int nth = params->nth;
 
+    // number of rows
     const int nr = ggml_nrows(src0);
 
     // rows per thread
@@ -7472,31 +7473,42 @@ static void ggml_compute_forward_rope_f32(
     // row index used to determine which thread to use
     int ir = 0;
 
+    debug_print_tensor_3d(src0);
+    // TODO: hacked by yifeng, directly slice only 1/4 of the each lastest elements.
     for (int64_t i3 = 0; i3 < ne3; i3++) {
         for (int64_t i2 = (mode == 0 ? 0 : n_past); i2 < ne2; i2++) {
             const int p = (mode == 0 ? n_past + i2 : i2);
             for (int64_t i1 = 0; i1 < ne1; i1++) {
                 if (ir++ < ir0) continue;
                 if (ir   > ir1) break;
-
-                for (int i0 = 0; i0 < n_dims; i0 += 2) {
-                    const float theta = powf(10000.0, ((float)-i0)/n_dims);
+                for (int i0 = 0; i0 < n_dims ; i0 += 1) {
+                    const float theta = powf(10000.0, ((float)-(i0*2))/n_dims);
 
                     const float cos_theta = cosf(p*theta);
                     const float sin_theta = sinf(p*theta);
+
 
                     const float * const src = (float *)((char *) src0->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
                     float * dst_data  = (float *)((char *)  dst->data + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
 
                     const float x0 = src[0];
-                    const float x1 = src[1];
+                    const float x1 = src[8];
 
-                    dst_data[0] = x0*cos_theta - x1*sin_theta;
-                    dst_data[1] = x0*sin_theta + x1*cos_theta;
+                    float x0cos = x0*cos_theta;
+                    float x0sin = x0*sin_theta;
+                    float x1cos = x1*cos_theta;
+                    float x1sin = x1*sin_theta;
+
+                    dst_data[0] = x0cos - x1sin;
+                    //dst_data[1] = x0sin + x1cos;
+                    fprintf(stderr, "x0: %f, x1: %f, cos: %f, sin: %f, x0cos: %f, x0sin: %f, x1cos: %f, x1sin: %f, dst_0: %f\n",
+                            x0, x1, cos_theta, sin_theta, x0cos, x0sin, x1cos, x1sin, dst_data[0]);
                 }
+                fprintf(stderr, "finished round %d * %d\n", i2, i1);
             }
         }
     }
+    debug_print_tensor_3d(dst);
 }
 
 static void ggml_compute_forward_rope_f16(

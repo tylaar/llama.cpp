@@ -383,10 +383,10 @@ struct ggml_tensor * ggml_new_tensor_4d(
         int64_t ne2,
         int64_t ne3);
 
-void debug_print_tensor(struct ggml_tensor* target);
-void debug_print_tensor_lite(struct ggml_tensor* target);
-void debug_print_tensor_3d_as_1d(struct ggml_tensor* target);
-void debug_print_tensor_2d_as_1d(struct ggml_tensor* target);
+void debug_print_tensor(const struct ggml_tensor* target);
+void debug_print_tensor_lite(const struct ggml_tensor* target);
+void debug_print_tensor_3d_as_1d(const struct ggml_tensor* target);
+void debug_print_tensor_2d_as_1d(const struct ggml_tensor* target);
 
 void debug_print_graph(struct ggml_cgraph* gf);
 void debug_print_graph_filter_type(struct ggml_cgraph* gf, enum ggml_op op);

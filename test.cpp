@@ -443,6 +443,8 @@ bool eval(
     ggml_tensor* final_norm_debug;
     ggml_tensor* out_debug;
     ggml_tensor* logits;
+    ggml_tensor* q_rot_debug;
+    ggml_tensor* k_rot_debug;
 /*
     ggml_tensor* inp_normed_debug;
     ggml_tensor* q_debug;
@@ -504,27 +506,51 @@ bool eval(
             auto vb = model.layers[il].c_attn_v_b;
             debug_print_tensor_lite(vw);
             // TODO: viewing in 3d with slicing problematic.
-            auto q_cur = ggml_add(ctx0,
-                              ggml_mul_mat(ctx0, qw, cur),
-                              ggml_repeat(ctx0,  qb, cur));
+            auto q_cur = ggml_reshape_3d(ctx0,
+                                         ggml_add(ctx0,
+                                                  ggml_mul_mat(ctx0, qw, cur),
+                                                  ggml_repeat(ctx0,  qb, cur)),
+                                         n_embd / n_head, n_head, N);
 
-            auto k_cur = ggml_add(ctx0,
-                              ggml_mul_mat(ctx0, kw, cur),
-                              ggml_repeat(ctx0, kb, cur));
+            auto k_cur = ggml_reshape_3d(ctx0,
+                                         ggml_add(ctx0,
+                                                  ggml_mul_mat(ctx0, kw, cur),
+                                                  ggml_repeat(ctx0, kb, cur)),
+                                         n_embd / n_head, n_head, N);
 
-            auto v_cur = ggml_add(ctx0,
-                              ggml_mul_mat(ctx0, vw, cur),
-                              ggml_repeat(ctx0, vb, cur));
+
+            auto q_rot = ggml_rope(ctx0,
+                                   q_cur,
+                                   0, n_rot, 0);
+            auto k_rot = ggml_rope(ctx0,
+                                   k_cur,
+                                   0, n_rot, 1);
 
             // q_reshape_debug = ggml_reshape_3d(ctx0, q_cur, n_embd / n_head, n_head, N);
             auto q = ggml_permute(ctx0,
-                                  ggml_reshape_3d(ctx0, q_cur, n_embd / n_head, n_head, N),
+                                  q_cur,
                                   0, 2, 1, 3);
+
             // k_reshape_debug = ggml_reshape_3d(ctx0, k_cur, n_embd / n_head, n_head, N);
             auto k = ggml_permute(ctx0,
-                                  ggml_reshape_3d(ctx0, k_cur, n_embd / n_head, n_head, N),
+                                  k_cur,
                              0, 2, 1, 3);
-            //v_reshape_debug = ggml_reshape_3d(ctx0, v_cur, n_embd / n_head, n_head, N);
+
+/*
+
+            auto q_rot = ggml_rope(ctx0,
+                                   q, 0, n_rot, 0);
+            auto k_rot = ggml_rope(ctx0,
+                                   k, 0, n_rot, 1);
+
+*/
+
+            q_rot_debug = q;
+            k_rot_debug = k;
+            auto v_cur = ggml_add(ctx0,
+                                  ggml_mul_mat(ctx0, vw, cur),
+                                  ggml_repeat(ctx0, vb, cur));
+
             auto v_permuted = ggml_permute(ctx0,
                                            ggml_reshape_3d(ctx0, v_cur, n_embd / n_head, n_head, N),
                                       1, 2, 0, 3);
@@ -591,6 +617,8 @@ bool eval(
             ggml_build_forward_expand(&gf, q);
             ggml_build_forward_expand(&gf, k);
             ggml_build_forward_expand(&gf, v);
+            ggml_build_forward_expand(&gf, q_rot);
+            ggml_build_forward_expand(&gf, k_rot);
             ggml_build_forward_expand(&gf, qk);
             ggml_build_forward_expand(&gf, qk_scaled);
             ggml_build_forward_expand(&gf, qk_causal_masked);
@@ -688,6 +716,11 @@ bool eval(
     debug_print_tensor_lite(qkv_merged_debug);
     std::cout << "==========qkv_merged_printend=============" << std::endl;
     */
+    std::cout << "==============rotated_query=============" << std::endl;
+    debug_print_tensor_lite(q_rot_debug);
+    std::cout << "==============rotated_key=============" << std::endl;
+    debug_print_tensor_lite(k_rot_debug);
+
     std::cout << "==========qkv_densed_printing=============" << std::endl;
     debug_print_tensor_lite(final_norm_debug);
     std::cout << "==========qkv_densed_printend=============" << std::endl;
