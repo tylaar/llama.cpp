@@ -448,7 +448,7 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
 
 std::string default_prompts = "Hello, I am";
 
-struct ggml_tensor* eval(
+std::vector<float> eval(
         const test_model & model,
         const int n_threads,
         const int n_past,
@@ -479,7 +479,7 @@ struct ggml_tensor* eval(
         buf = realloc(buf, buf_size);
         if (buf == nullptr) {
             fprintf(stderr, "%s: failed to allocate %zu bytes\n", __func__, buf_size);
-            return nullptr;
+            return std::vector<float>();
         }
     }
 
@@ -506,6 +506,11 @@ struct ggml_tensor* eval(
     ggml_tensor* k_rot_debug;
     ggml_tensor* l0_dense;
     ggml_tensor* l1_dense;
+    ggml_tensor* l2_dense;
+    ggml_tensor* l3_dense;
+    ggml_tensor* l4_dense;
+    ggml_tensor* l5_dense;
+
     ggml_tensor* l1_q_rot_debug;
     ggml_tensor* l1_k_rot_debug;
 /*
@@ -602,7 +607,7 @@ struct ggml_tensor* eval(
                                             ggml_reshape_3d(ctx0,
                                                             ggml_view_1d(ctx0, model.kv_self.k, (n_past + N) * n_embd,
                                                                          il * n_ctx * ggml_element_size(model.kv_self.k) * n_embd),
-                                                            n_embd / n_head, n_head, N),
+                                                            n_embd / n_head, n_head, n_past+N),
                                             n_past, n_rot, 1),
                              0, 2, 1, 3);
 
@@ -633,7 +638,7 @@ struct ggml_tensor* eval(
                                       1, 2, 0, 3);
             auto v = ggml_cpy(ctx0,
                               v_permuted,
-                              ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, v_permuted->ne[0], v_permuted->ne[1], v_permuted->ne[2]));
+                              ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, n_past + N, v_permuted->ne[1], v_permuted->ne[2]));
             //q_debug = q;
             //k_debug = k;
             //v_debug = v;
@@ -642,7 +647,7 @@ struct ggml_tensor* eval(
             //qk_debug = qk;
             auto qk_scaled = ggml_scale(ctx0, qk, alpha);
             //qk_scaled_debug = qk_scaled;
-            auto qk_causal_masked = ggml_diag_mask_inf(ctx0, qk_scaled, 0);
+            auto qk_causal_masked = ggml_diag_mask_inf(ctx0, qk_scaled, n_past);
             //qk_causal_masked_debug = qk_causal_masked;
             auto qk_softmax = ggml_soft_max(ctx0, qk_causal_masked);
             //qk_softmax_debug = qk_softmax;
@@ -694,7 +699,25 @@ struct ggml_tensor* eval(
             }
             if (il==1) {
                 l1_dense = qkv_res;
+                ggml_build_forward_expand(&gf, l1_dense);
             }
+            if (il==2) {
+                l2_dense = qkv_res;
+                ggml_build_forward_expand(&gf, l2_dense);
+            }
+            if (il==3) {
+                l3_dense = qkv_res;
+                ggml_build_forward_expand(&gf, l3_dense);
+            }
+            if (il==4) {
+                l4_dense = qkv_res;
+                ggml_build_forward_expand(&gf, l4_dense);
+            }
+            if (il==5) {
+                l5_dense = qkv_res;
+                ggml_build_forward_expand(&gf, l5_dense);
+            }
+
             //ggml_build_forward_expand(&gf, qkv_t);
             //ggml_build_forward_expand(&gf, qkv_t_reshaped);
             ggml_build_forward_expand(&gf, inpSA);
@@ -714,6 +737,8 @@ struct ggml_tensor* eval(
             ggml_build_forward_expand(&gf, qkv_densed);
             ggml_build_forward_expand(&gf, first_part);
             ggml_build_forward_expand(&gf, second_part);
+            ggml_build_forward_expand(&gf, l0_dense);
+
 
             // Below are for debugging purpose
             ggml_build_forward_expand(&gf, qkv_densed_debug);
@@ -751,6 +776,7 @@ struct ggml_tensor* eval(
 
         ggml_build_forward_expand(&gf, final_normed);
         logits = ggml_mul_mat(ctx0,  model.embed_out_wte, final_normed);
+        ggml_build_forward_expand(&gf, logits);
         out_debug = logits;
         ggml_build_forward_expand(&gf, logits);
     }
@@ -766,6 +792,16 @@ struct ggml_tensor* eval(
     debug_print_tensor_lite(l0_dense);
     std::cout << "==========l_1_hidden=============" << std::endl;
     debug_print_tensor_lite(l1_dense);
+    std::cout << "==========l_2_hidden=============" << std::endl;
+    debug_print_tensor_lite(l2_dense);
+    std::cout << "==========l_3_hidden=============" << std::endl;
+    debug_print_tensor_lite(l3_dense);
+    std::cout << "==========l_4_hidden=============" << std::endl;
+    debug_print_tensor_lite(l4_dense);
+    std::cout << "==========l_5_hidden=============" << std::endl;
+    debug_print_tensor_lite(l5_dense);
+
+
 /*
     debug_print_tensor_lite(q_debug);
     std::cout << "==========query_reshape_printing=============" << std::endl;
@@ -808,9 +844,9 @@ struct ggml_tensor* eval(
     std::cout << "==========qkv_merged_printend=============" << std::endl;
     */
     std::cout << "==============rotated_query=============" << std::endl;
-    debug_print_tensor_lite(l1_q_rot_debug);
+    //debug_print_tensor_lite(l1_q_rot_debug);
     std::cout << "==============rotated_key=============" << std::endl;
-    debug_print_tensor_lite(l1_k_rot_debug);
+    //debug_print_tensor_lite(l1_k_rot_debug);
 
     std::cout << "==========qkv_densed_printing=============" << std::endl;
     debug_print_tensor_lite(qkv_copy);
@@ -839,7 +875,10 @@ struct ggml_tensor* eval(
 
     ggml_free(ctx0);
 
-    return out_debug;
+    std::vector<float> logits_out;
+    logits_out.resize(n_vocab);
+    memcpy(logits_out.data(), (float *) ggml_get_data(logits) + (n_vocab * (N - 1)), sizeof(float) * n_vocab);
+    return logits_out;
 }
 
 int main() {
@@ -864,8 +903,12 @@ int main() {
     size_t mem_per_token = 0;
 
     for (int i = 0 ; i < 10 ; i++) {
-        auto res = eval(model, 1, n_past, embd_inp, mem_per_token);
+        auto v = eval(model, 1, n_past, embd_inp, mem_per_token);
         n_past += embd_inp.size();
-        logits.push_back(res);
+        embd_inp.clear();
+        int maxElementIndex = std::max_element(v.begin(),v.end()) - v.begin();
+        int maxElement = *std::max_element(v.begin(), v.end());
+        std::cout << maxElement << std::endl;
+        embd_inp.push_back(maxElementIndex);
     }
 }

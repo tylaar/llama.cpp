@@ -595,15 +595,19 @@ static void debug_print_tensor_2d(const struct ggml_tensor* target) {
 static void debug_print_tensor_2d_lite(const struct ggml_tensor* target) {
     int type_size = ggml_type_sizef(target->type);
     fprintf(stderr, "[2D matrix lite] m_dim_0=%d, m_dim_1=%d type_size=%d\n", target->ne[0], target->ne[1], type_size);
-    for (int i = 0 ; i < target->ne[1]; i+=target->ne[1] - 1) {
+    for (int i = 0 ; i < target->ne[1]; i+=1) {
         fprintf(stderr, "\n[");
+        float sum = 0.0;
+        for (int j = 0 ; j < target->ne[0]; j++) {
+            sum += (*(float*)((char*)target->data + i*target->nb[1]+ j*target->nb[0]));
+        }
         //for (int j = 0 ; j < target->ne[0]; j++) {
         int64_t j = target->ne[0] - 1;
         fprintf(stderr, "%f ... %f",
                 (*(float*)((char*)target->data + i*target->nb[1])),
                 (*(float*)((char*)target->data + i*target->nb[1]+ j*target->nb[0])));
         //}
-        fprintf(stderr, "]");
+        fprintf(stderr, "](sum: %f)", sum);
     }
     fprintf(stderr, "\n[2D matrix lite] print done.\n");
 
@@ -5198,6 +5202,11 @@ static void ggml_compute_forward_dup_f32(
         return;
     }
 
+    if (dst->n_dims == 1) {
+        debug_print_tensor_1d(dst);
+        debug_print_tensor(src0);
+    }
+
     const int64_t ne00 = src0->ne[0];
     const int64_t ne01 = src0->ne[1];
     const int64_t ne02 = src0->ne[2];
@@ -5279,6 +5288,10 @@ static void ggml_compute_forward_dup_f32(
     } else {
         GGML_ASSERT(false); // TODO: implement
     }
+    if (dst->n_dims == 1) {
+        debug_print_tensor_1d(dst);
+    }
+
 }
 
 static void ggml_compute_forward_dup(
