@@ -22,6 +22,70 @@ tokenizer = AutoTokenizer.from_pretrained(
     )
 
 
+def layer_transform(n_layer, list_vars, new_list_vars):
+    c_attn_q_idx = np.array([], dtype=int)
+    c_attn_k_idx = np.array([], dtype=int)
+    c_attn_v_idx = np.array([], dtype=int)
+
+    for i in range(n_head):
+        c_attn_q_idx = np.concatenate([c_attn_q_idx, np.arange(i*3*head_size, i*3*head_size+head_size, 1, dtype=int)])
+        c_attn_k_idx = c_attn_q_idx + n_embd/n_head
+        c_attn_v_idx = c_attn_k_idx + n_embd/n_head
+
+
+    for i in range(n_layer):
+        istr = str(i)
+        layer_norm_w = list_vars["gpt_neox.layers."+istr+".input_layernorm.weight"]
+        new_list_vars["c_l_"+istr+"_norm_w"] = layer_norm_w
+        layer_norm_b = list_vars["gpt_neox.layers."+istr+".input_layernorm.bias"]
+        new_list_vars["c_l_"+istr+"_norm_b"] = layer_norm_b
+
+        post_layer_norm_w = list_vars["gpt_neox.layers."+istr+".post_attention_layernorm.weight"]
+        new_list_vars["c_l_"+istr+"_p_norm_w"] = post_layer_norm_w
+        post_layer_norm_b = list_vars["gpt_neox.layers."+istr+".post_attention_layernorm.bias"]
+        new_list_vars["c_l_"+istr+"_p_norm_b"] = post_layer_norm_b
+
+        layer_dense_weight = list_vars["gpt_neox.layers."+istr+".attention.dense.weight"]
+        new_list_vars["c_l_"+istr+"_dense_w"] = layer_dense_weight
+        layer_dense_bias = list_vars["gpt_neox.layers."+istr+".attention.dense.bias"]
+        new_list_vars["c_l_"+istr+"_dense_b"] = layer_dense_bias
+
+        #
+        # starting isolate out qkv part.
+        #
+        c_attn_k_v_w = list_vars["gpt_neox.layers."+istr+".attention.query_key_value.weight"]
+        # c_attn_k_v_w = torch.transpose(c_attn_k_v_w, 0, 1)
+        c_attn_k_v_b = list_vars["gpt_neox.layers."+istr+".attention.query_key_value.bias"]
+
+        c_attn_q = c_attn_k_v_w[c_attn_q_idx, :]
+        c_attn_k = c_attn_k_v_w[c_attn_k_idx, :]
+        c_attn_v = c_attn_k_v_w[c_attn_v_idx, :]
+
+        c_attn_q_b = c_attn_k_v_b[c_attn_q_idx]
+        c_attn_k_b = c_attn_k_v_b[c_attn_k_idx]
+        c_attn_v_b = c_attn_k_v_b[c_attn_v_idx]
+
+        new_list_vars["c_l_"+istr+"_attn_k_w"] = c_attn_k
+        new_list_vars["c_l_"+istr+"_attn_k_b"] = c_attn_k_b
+        new_list_vars["c_l_"+istr+"_attn_q_w"] = c_attn_q
+        new_list_vars["c_l_"+istr+"_attn_q_b"] = c_attn_q_b
+        new_list_vars["c_l_"+istr+"_attn_v_w"] = c_attn_v
+        new_list_vars["c_l_"+istr+"_attn_v_b"] = c_attn_v_b
+
+        # End of isolate qkv part
+
+        # start h_4h_h part
+        c_mlp_h_4h_w = list_vars["gpt_neox.layers."+istr+".mlp.dense_h_to_4h.weight"]
+        new_list_vars["c_l_"+istr+"_mlp_h_4h_w"] = c_mlp_h_4h_w
+        c_mlp_h_4h_b = list_vars["gpt_neox.layers."+istr+".mlp.dense_h_to_4h.bias"]
+        new_list_vars["c_l_"+istr+"_mlp_h_4h_b"] = c_mlp_h_4h_b
+        c_mlp_4h_h_w = list_vars["gpt_neox.layers."+istr+".mlp.dense_4h_to_h.weight"]
+        new_list_vars["c_l_"+istr+"_mlp_4h_h_w"] = c_mlp_4h_h_w
+        c_mlp_4h_h_b = list_vars["gpt_neox.layers."+istr+".mlp.dense_4h_to_h.bias"]
+        new_list_vars["c_l_"+istr+"_mlp_4h_h_b"] = c_mlp_4h_h_b
+        # End of MLP
+    return new_list_vars
+
 dir_out_model = '/Users/yifengyu/hack/models/test'
 
 fname_out = dir_out_model + "/test.bin";
@@ -48,7 +112,7 @@ n_head = 8
 print('n_head:', n_head)
 fout.write(struct.pack("i", n_head))  # n_head
 
-n_layer = 1
+n_layer = 6
 print('n_layer:', n_layer)
 fout.write(struct.pack("i", n_layer))  # n_layer
 n_rot = 16
@@ -60,79 +124,21 @@ fout.write(struct.pack("i", ftype))
 
 head_size = int(n_embd/n_head)
 
-c_attn_q_idx = np.array([], dtype=int)
-c_attn_k_idx = np.array([], dtype=int)
-c_attn_v_idx = np.array([], dtype=int)
-
-for i in range(n_head):
-    c_attn_q_idx = np.concatenate([c_attn_q_idx, np.arange(i*3*head_size, i*3*head_size+head_size, 1, dtype=int)])
-c_attn_k_idx = c_attn_q_idx + n_embd/n_head
-c_attn_v_idx = c_attn_k_idx + n_embd/n_head
 list_vars = model.state_dict()
 
 new_list_vars = {}
 
-layer_norm_w = list_vars["gpt_neox.layers.0.input_layernorm.weight"]
-new_list_vars["c_l_norm_w"] = layer_norm_w
-layer_norm_b = list_vars["gpt_neox.layers.0.input_layernorm.bias"]
-new_list_vars["c_l_norm_b"] = layer_norm_b
-
-post_layer_norm_w = list_vars["gpt_neox.layers.0.post_attention_layernorm.weight"]
-new_list_vars["c_p_l_norm_w"] = post_layer_norm_w
-post_layer_norm_b = list_vars["gpt_neox.layers.0.post_attention_layernorm.bias"]
-new_list_vars["c_p_l_norm_b"] = post_layer_norm_b
-
-layer_dense_weight = list_vars["gpt_neox.layers.0.attention.dense.weight"]
-new_list_vars["c_l_dense_w"] = layer_dense_weight
-layer_dense_bias = list_vars["gpt_neox.layers.0.attention.dense.bias"]
-new_list_vars["c_l_dense_b"] = layer_dense_bias
 final_norm_w = list_vars["gpt_neox.final_layer_norm.weight"]
 new_list_vars["final_norm_w"] = final_norm_w
 final_norm_b = list_vars["gpt_neox.final_layer_norm.bias"]
 new_list_vars["final_norm_b"] = final_norm_b
-#
-# starting isolate out qkv part.
-#
-c_attn_k_v_w = list_vars["gpt_neox.layers.0.attention.query_key_value.weight"]
-# c_attn_k_v_w = torch.transpose(c_attn_k_v_w, 0, 1)
-c_attn_k_v_b = list_vars["gpt_neox.layers.0.attention.query_key_value.bias"]
-
-#c_attn_q = torch.transpose(c_attn_k_v_w[c_attn_q_idx, :], 0, 1)
-#c_attn_k = torch.transpose(c_attn_k_v_w[c_attn_k_idx, :], 0, 1)
-#c_attn_v = torch.transpose(c_attn_k_v_w[c_attn_v_idx, :], 0, 1)
-c_attn_q = c_attn_k_v_w[c_attn_q_idx, :]
-c_attn_k = c_attn_k_v_w[c_attn_k_idx, :]
-c_attn_v = c_attn_k_v_w[c_attn_v_idx, :]
-
-c_attn_q_b = c_attn_k_v_b[c_attn_q_idx]
-c_attn_k_b = c_attn_k_v_b[c_attn_k_idx]
-c_attn_v_b = c_attn_k_v_b[c_attn_v_idx]
-
-new_list_vars["c_attn_k_w"] = c_attn_k
-new_list_vars["c_attn_k_b"] = c_attn_k_b
-new_list_vars["c_attn_q_w"] = c_attn_q
-new_list_vars["c_attn_q_b"] = c_attn_q_b
-new_list_vars["c_attn_v_w"] = c_attn_v
-new_list_vars["c_attn_v_b"] = c_attn_v_b
-
-# End of isolate qkv part
-
-# start h_4h_h part
-c_mlp_h_4h_w = list_vars["gpt_neox.layers.0.mlp.dense_h_to_4h.weight"]
-new_list_vars["c_mlp_h_4h_w"] = c_mlp_h_4h_w
-c_mlp_h_4h_b = list_vars["gpt_neox.layers.0.mlp.dense_h_to_4h.bias"]
-new_list_vars["c_mlp_h_4h_b"] = c_mlp_h_4h_b
-c_mlp_4h_h_w = list_vars["gpt_neox.layers.0.mlp.dense_4h_to_h.weight"]
-new_list_vars["c_mlp_4h_h_w"] = c_mlp_4h_h_w
-c_mlp_4h_h_b = list_vars["gpt_neox.layers.0.mlp.dense_4h_to_h.bias"]
-new_list_vars["c_mlp_4h_h_b"] = c_mlp_4h_h_b
-# End of MLP
 
 embd_in_data = list_vars["gpt_neox.embed_in.weight"]
 new_list_vars["embd_in"] = embd_in_data
 embd_out_data = list_vars["embed_out.weight"]
 new_list_vars["embd_out"] = embd_out_data
 
+layer_transform(6, list_vars, new_list_vars)
 
 for idx, name in enumerate(new_list_vars):
     data = new_list_vars[name].numpy()

@@ -13,6 +13,8 @@
 #include <iostream>
 #include <unistd.h>
 
+static const size_t MB = 1024*1024;
+
 struct test_hparams {
     int32_t n_vocab = 10;
     int32_t n_ctx = 10;
@@ -22,6 +24,56 @@ struct test_hparams {
     int32_t n_rot = 2;
     int32_t f16 = 0;
 };
+
+
+class llama_kv_cache {
+public:
+    struct ggml_tensor * k;
+    struct ggml_tensor * v;
+
+    struct ggml_context * ctx;
+
+    std::vector<uint8_t> buf;
+
+    int n; // number of tokens currently in the cache
+    bool kv_cache_init(
+            const struct test_hparams& hparams,
+            ggml_type   wtype,
+            int   n_ctx) {
+        const int n_embd  = hparams.n_embd;
+        const int n_layer = hparams.n_layer;
+
+        const int n_mem      = n_layer*n_ctx;
+        const int n_elements = n_embd*n_mem;
+
+        buf.resize(2u*n_elements*ggml_type_size(wtype) + 2u*MB);
+
+        struct ggml_init_params params;
+        params.mem_size   = buf.size();
+        params.mem_buffer = buf.data();
+        params.no_alloc   = false;
+
+        ctx = ggml_init(params);
+
+        if (!ctx) {
+            fprintf(stderr, "%s: failed to allocate memory for kv cache\n", __func__);
+            return false;
+        }
+
+        k = ggml_new_tensor_1d(ctx, wtype, n_elements);
+        v = ggml_new_tensor_1d(ctx, wtype, n_elements);
+
+        return true;
+    }
+
+    void kv_cache_free() {
+        if (ctx) {
+            ggml_free(ctx);
+            ctx = nullptr;
+        }
+    }
+};
+
 
 struct test_layer {
     //struct ggml_tensor * c_attn_k_v_w;
@@ -66,6 +118,10 @@ struct test_model {
     struct ggml_tensor * memory_v;
 
     struct ggml_context * ctx;
+    // key + value cache for the self attention
+    // TODO: move to llama_state
+    struct llama_kv_cache kv_self;
+
     std::map<std::string, struct ggml_tensor *> tensors;
 };
 
@@ -105,13 +161,6 @@ gpt_vocab build_vocab() {
 }
 
 bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab) {
-
-    std::vector<int> idx = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-    for (auto i : idx) {
-        auto ib = i * 2;
-        std::cout << ib - i % 2 << std::endl;
-    }
-
     auto fin = std::ifstream(fname, std::ios::binary);
     if (!fin) {
         fprintf(stderr, "%s: failed to open '%s'\n", __func__, fname.c_str());
@@ -167,6 +216,11 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
     }
 
     const auto & hparams = model.hparams;
+
+    if (!model.kv_self.kv_cache_init(model.hparams, GGML_TYPE_F32, model.hparams.n_ctx)) {
+        fprintf(stderr, "%s: kv_cache_init() failed for self-attention cache\n", __func__);
+        return false;
+    }
 
     const int n_embd  = hparams.n_embd;
     const int n_layer = hparams.n_layer;
@@ -246,41 +300,41 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
 
             layer.c_attn_q_w = ggml_new_tensor_2d(ctx, wtype,n_embd, n_embd);
             layer.c_attn_q_b = ggml_new_tensor_1d(ctx, wtype,n_embd);
-            model.tensors["c_attn_q_w"] = layer.c_attn_q_w;
-            model.tensors["c_attn_q_b"] = layer.c_attn_q_b;
+            model.tensors["c_l_" + std::to_string(i) + "_attn_q_w"] = layer.c_attn_q_w;
+            model.tensors["c_l_" + std::to_string(i) + "_attn_q_b"] = layer.c_attn_q_b;
 
             layer.c_attn_k_w = ggml_new_tensor_2d(ctx, wtype,n_embd, n_embd);
             layer.c_attn_k_b = ggml_new_tensor_1d(ctx, wtype,n_embd);
-            model.tensors["c_attn_k_w"] = layer.c_attn_k_w;
-            model.tensors["c_attn_k_b"] = layer.c_attn_k_b;
+            model.tensors["c_l_" + std::to_string(i) + "_attn_k_w"] = layer.c_attn_k_w;
+            model.tensors["c_l_" + std::to_string(i) + "_attn_k_b"] = layer.c_attn_k_b;
 
             layer.c_attn_v_w = ggml_new_tensor_2d(ctx, wtype,n_embd, n_embd);
             layer.c_attn_v_b = ggml_new_tensor_1d(ctx, wtype,n_embd);
-            model.tensors["c_attn_v_w"] = layer.c_attn_v_w;
-            model.tensors["c_attn_v_b"] = layer.c_attn_v_b;
+            model.tensors["c_l_" + std::to_string(i) + "_attn_v_w"] = layer.c_attn_v_w;
+            model.tensors["c_l_" + std::to_string(i) + "_attn_v_b"] = layer.c_attn_v_b;
 
             layer.c_l_norm_w = ggml_new_tensor_1d(ctx, wtype,n_embd);
-            model.tensors["c_l_norm_w"] = layer.c_l_norm_w;
+            model.tensors["c_l_" + std::to_string(i) + "_norm_w"] = layer.c_l_norm_w;
             layer.c_l_norm_b = ggml_new_tensor_1d(ctx, wtype,n_embd);
-            model.tensors["c_l_norm_b"] = layer.c_l_norm_b;
+            model.tensors["c_l_" + std::to_string(i) + "_norm_b"] = layer.c_l_norm_b;
             layer.c_p_l_norm_w = ggml_new_tensor_1d(ctx, wtype,n_embd);
-            model.tensors["c_p_l_norm_w"] = layer.c_p_l_norm_w;
+            model.tensors["c_l_" + std::to_string(i) + "_p_norm_w"] = layer.c_p_l_norm_w;
             layer.c_p_l_norm_b = ggml_new_tensor_1d(ctx, wtype,n_embd);
-            model.tensors["c_p_l_norm_b"] = layer.c_p_l_norm_b;
+            model.tensors["c_l_" + std::to_string(i) + "_p_norm_b"] = layer.c_p_l_norm_b;
 
             layer.c_l_dense_w = ggml_new_tensor_2d(ctx, wtype,n_embd, n_embd);
             layer.c_l_dense_b = ggml_new_tensor_1d(ctx, wtype,n_embd);
-            model.tensors["c_l_dense_w"] = layer.c_l_dense_w;
-            model.tensors["c_l_dense_b"] = layer.c_l_dense_b;
+            model.tensors["c_l_" + std::to_string(i) + "_dense_w"] = layer.c_l_dense_w;
+            model.tensors["c_l_" + std::to_string(i) + "_dense_b"] = layer.c_l_dense_b;
 
             layer.c_mlp_h_to_4h_w = ggml_new_tensor_2d(ctx, wtype, n_embd, n_embd*4);
             layer.c_mlp_h_to_4h_b = ggml_new_tensor_1d(ctx, wtype, n_embd*4);
-            model.tensors["c_mlp_h_4h_w"] = layer.c_mlp_h_to_4h_w;
-            model.tensors["c_mlp_h_4h_b"] = layer.c_mlp_h_to_4h_b;
+            model.tensors["c_l_" + std::to_string(i) + "_mlp_h_4h_w"] = layer.c_mlp_h_to_4h_w;
+            model.tensors["c_l_" + std::to_string(i) + "_mlp_h_4h_b"] = layer.c_mlp_h_to_4h_b;
             layer.c_mlp_4h_to_h_w = ggml_new_tensor_2d(ctx, wtype, n_embd*4, n_embd);
             layer.c_mlp_4h_to_h_b = ggml_new_tensor_1d(ctx, wtype, n_embd);
-            model.tensors["c_mlp_4h_h_w"] = layer.c_mlp_4h_to_h_w;
-            model.tensors["c_mlp_4h_h_b"] = layer.c_mlp_4h_to_h_b;
+            model.tensors["c_l_" + std::to_string(i) + "_mlp_4h_h_w"] = layer.c_mlp_4h_to_h_w;
+            model.tensors["c_l_" + std::to_string(i) + "_mlp_4h_h_b"] = layer.c_mlp_4h_to_h_b;
         }
     }
 
@@ -394,12 +448,11 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
 
 std::string default_prompts = "Hello, I am";
 
-bool eval(
+struct ggml_tensor* eval(
         const test_model & model,
         const int n_threads,
         const int n_past,
         const std::vector<gpt_vocab::id> & embd_inp,
-        std::vector<float>         & embd_w,
         size_t                     & mem_per_token) {
     const int N = embd_inp.size();
 
@@ -426,7 +479,7 @@ bool eval(
         buf = realloc(buf, buf_size);
         if (buf == nullptr) {
             fprintf(stderr, "%s: failed to allocate %zu bytes\n", __func__, buf_size);
-            return false;
+            return nullptr;
         }
     }
 
@@ -451,6 +504,10 @@ bool eval(
     ggml_tensor* logits;
     ggml_tensor* q_rot_debug;
     ggml_tensor* k_rot_debug;
+    ggml_tensor* l0_dense;
+    ggml_tensor* l1_dense;
+    ggml_tensor* l1_q_rot_debug;
+    ggml_tensor* l1_k_rot_debug;
 /*
     ggml_tensor* inp_normed_debug;
     ggml_tensor* q_debug;
@@ -474,9 +531,8 @@ bool eval(
     ggml_tensor* qkv_copy;
     for (int il = 0; il < n_layer; ++il) {
         struct ggml_tensor *inpSA = inpL;
-        inpSA_debug = inpSA;
         struct ggml_tensor * cur;
-
+        inpSA_debug = inpSA;
         {
             cur = ggml_norm(ctx0, inpL);
 
@@ -512,28 +568,42 @@ bool eval(
             auto vw = model.layers[il].c_attn_v_w;
             auto vb = model.layers[il].c_attn_v_b;
             debug_print_tensor_lite(vw);
+            auto q_m = ggml_add(ctx0,
+                                ggml_mul_mat(ctx0, qw, cur),
+                                ggml_repeat(ctx0, qb, cur));
+            auto k_m = ggml_add(ctx0,
+                                ggml_mul_mat(ctx0, kw, cur),
+                                ggml_repeat(ctx0, kb, cur));
+            auto v_m = ggml_add(ctx0,
+                                ggml_mul_mat(ctx0, vw, cur),
+                                ggml_repeat(ctx0, vb, cur));
             // TODO: viewing in 3d with slicing problematic.
 
+            if (N >= 1) {
+                struct ggml_tensor *k = ggml_view_1d(ctx0, model.kv_self.k, N * n_embd, (ggml_element_size(model.kv_self.k) * n_embd) * (il * n_ctx + n_past));
+                struct ggml_tensor *v = ggml_view_1d(ctx0, model.kv_self.v, N * n_embd, (ggml_element_size(model.kv_self.v) * n_embd) * (il * n_ctx + n_past));
+
+                ggml_build_forward_expand(&gf, ggml_cpy(ctx0, k_m, k));
+                ggml_build_forward_expand(&gf, ggml_cpy(ctx0, v_m, v));
+
+            }
             // q_reshape_debug = ggml_reshape_3d(ctx0, q_cur, n_embd / n_head, n_head, N);
             auto q = ggml_permute(ctx0,
                                   ggml_rope(ctx0,
                                             ggml_reshape_3d(ctx0,
-                                                            ggml_add(ctx0,
-                                                                     ggml_mul_mat(ctx0, qw, cur),
-                                                                     ggml_repeat(ctx0,  qb, cur)),
+                                                            q_m,
                                                             n_embd / n_head, n_head, N),
-                                            0, n_rot, 0),
+                                            n_past, n_rot, 0),
                                   0, 2, 1, 3);
 
             // k_reshape_debug = ggml_reshape_3d(ctx0, k_cur, n_embd / n_head, n_head, N);
             auto k = ggml_permute(ctx0,
                                   ggml_rope(ctx0,
                                             ggml_reshape_3d(ctx0,
-                                                            ggml_add(ctx0,
-                                                                     ggml_mul_mat(ctx0, kw, cur),
-                                                                     ggml_repeat(ctx0, kb, cur)),
+                                                            ggml_view_1d(ctx0, model.kv_self.k, (n_past + N) * n_embd,
+                                                                         il * n_ctx * ggml_element_size(model.kv_self.k) * n_embd),
                                                             n_embd / n_head, n_head, N),
-                                            0, n_rot, 1),
+                                            n_past, n_rot, 1),
                              0, 2, 1, 3);
 
 /*
@@ -547,12 +617,19 @@ bool eval(
 
             q_rot_debug = q;
             k_rot_debug = k;
+            if (il == 1) {
+                l1_k_rot_debug = k;
+                l1_q_rot_debug = q;
+            }
             auto v_cur = ggml_add(ctx0,
                                   ggml_mul_mat(ctx0, vw, cur),
                                   ggml_repeat(ctx0, vb, cur));
 
             auto v_permuted = ggml_permute(ctx0,
-                                           ggml_reshape_3d(ctx0, v_cur, n_embd / n_head, n_head, N),
+                                           ggml_reshape_3d(ctx0,
+                                                           ggml_view_1d(ctx0, model.kv_self.v, (n_past + N) * n_embd,
+                                                                        il * n_ctx * ggml_element_size(model.kv_self.v) * n_embd),
+                                                           n_embd / n_head, n_head, n_past + N),
                                       1, 2, 0, 3);
             auto v = ggml_cpy(ctx0,
                               v_permuted,
@@ -609,9 +686,15 @@ bool eval(
             auto qkv_res = ggml_add(ctx0,
                                     first_part, second_part
             );
-            //qkv_res = ggml_add(ctx0, qkv_res, qkv_4h_h);
-
             qkv_copy = qkv_res;
+
+            inpL = qkv_copy;
+            if (il==0) {
+                l0_dense = qkv_res;
+            }
+            if (il==1) {
+                l1_dense = qkv_res;
+            }
             //ggml_build_forward_expand(&gf, qkv_t);
             //ggml_build_forward_expand(&gf, qkv_t_reshaped);
             ggml_build_forward_expand(&gf, inpSA);
@@ -622,6 +705,7 @@ bool eval(
             ggml_build_forward_expand(&gf, k_rot);
             */
             ggml_build_forward_expand(&gf, qk);
+            ggml_build_forward_expand(&gf, qkv_res);
             ggml_build_forward_expand(&gf, qk_scaled);
             ggml_build_forward_expand(&gf, qk_causal_masked);
             ggml_build_forward_expand(&gf, qk_softmax);
@@ -632,7 +716,6 @@ bool eval(
             ggml_build_forward_expand(&gf, second_part);
 
             // Below are for debugging purpose
-            ggml_build_forward_expand(&gf, qkv_copy);
             ggml_build_forward_expand(&gf, qkv_densed_debug);
             ggml_build_forward_expand(&gf, qkv_merged_debug);
 /*
@@ -656,7 +739,7 @@ bool eval(
 
     {
         // final norm
-        auto final_normed = ggml_norm(ctx0, qkv_copy);
+        auto final_normed = ggml_norm(ctx0, inpL);
 
         // cur = ln_input_norm_w*cur + ln_input_norm_b
         final_normed = ggml_add(ctx0,
@@ -679,6 +762,10 @@ bool eval(
     std::cout << "==========input_normed_printing=============" << std::endl;
     debug_print_tensor_lite(inpSA_debug);
     std::cout << "==========input_normed_printend=============" << std::endl;
+    std::cout << "==========l_0_hidden=============" << std::endl;
+    debug_print_tensor_lite(l0_dense);
+    std::cout << "==========l_1_hidden=============" << std::endl;
+    debug_print_tensor_lite(l1_dense);
 /*
     debug_print_tensor_lite(q_debug);
     std::cout << "==========query_reshape_printing=============" << std::endl;
@@ -721,9 +808,9 @@ bool eval(
     std::cout << "==========qkv_merged_printend=============" << std::endl;
     */
     std::cout << "==============rotated_query=============" << std::endl;
-    debug_print_tensor_lite(q_rot_debug);
+    debug_print_tensor_lite(l1_q_rot_debug);
     std::cout << "==============rotated_key=============" << std::endl;
-    debug_print_tensor_lite(k_rot_debug);
+    debug_print_tensor_lite(l1_k_rot_debug);
 
     std::cout << "==========qkv_densed_printing=============" << std::endl;
     debug_print_tensor_lite(qkv_copy);
@@ -747,17 +834,12 @@ bool eval(
     //memcpy(embd_w.data(), ggml_get_data(inpL), sizeof(float)*n_vocab*N);
 
     // return result for just the last token
-    embd_w.resize(n_vocab);
-    memcpy(embd_w.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
-
-    if (mem_per_token == 0) {
-        mem_per_token = ggml_used_mem(ctx0)/N;
-    }
-    //printf("used_mem = %zu\n", ggml_used_mem(ctx0));
+    //embd_w.resize(n_vocab);
+    //memcpy(embd_w.data(), (float *) ggml_get_data(inpL) + (n_vocab*(N-1)), sizeof(float)*n_vocab);
 
     ggml_free(ctx0);
 
-    return true;
+    return out_debug;
 }
 
 int main() {
@@ -775,11 +857,15 @@ int main() {
     }
 
     int n_past = 0;
-    std::vector<float> logits;
+    std::vector<float> logits_group;
+    std::vector<ggml_tensor*> logits;
 
     std::vector<gpt_vocab::id> embd_inp = {12092, 13, 309, 717};
     size_t mem_per_token = 0;
 
-    eval(model, 1, n_past, embd_inp, logits, mem_per_token);
-
+    for (int i = 0 ; i < 10 ; i++) {
+        auto res = eval(model, 1, n_past, embd_inp, mem_per_token);
+        n_past += embd_inp.size();
+        logits.push_back(res);
+    }
 }

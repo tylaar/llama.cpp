@@ -1936,7 +1936,7 @@ inline static ggml_float ggml_vec_dot_f32(const int n, float * restrict s, const
     // leftovers
     for (int i = np; i < n; ++i) {
         double res = x[i]*y[i];
-        fprintf(stderr, "x[%d](%f) * y[%d](%f) = %f\n", i, x[i], i, y[i], res);
+        //fprintf(stderr, "x[%d](%f) * y[%d](%f) = %f\n", i, x[i], i, y[i], res);
         sumf += res;
     }
 #else
@@ -6553,7 +6553,7 @@ static void ggml_compute_forward_mul_mat_f32(
                              (float *) ((char *) src1->data + (i11*nb11 + i12*nb12 + i13*nb13)));
         }
     }
-    debug_print_tensor_lite(dst);
+    //debug_print_tensor_lite(dst);
 
     //int64_t t1 = ggml_perf_time_us();
     //static int64_t acc = 0;
@@ -7037,8 +7037,8 @@ static void ggml_compute_forward_scale_f32(
     GGML_ASSERT(ggml_are_same_shape(src0, dst));
     GGML_ASSERT(ggml_is_scalar(src1));
 
-    fprintf(stderr, "====================before scale alpha ================");
-    debug_print_tensor(src0);
+    //fprintf(stderr, "====================before scale alpha ================");
+    //debug_print_tensor(src0);
     if (params->type == GGML_TASK_INIT || params->type == GGML_TASK_FINALIZE) {
         return;
     }
@@ -7062,8 +7062,8 @@ static void ggml_compute_forward_scale_f32(
     for (int i1 = ir0; i1 < ir1; i1++) {
         ggml_vec_scale_f32(nc, (float *) ((char *) dst->data + i1*(dst->nb[1])), v);
     }
-    fprintf(stderr, "====================after scale alpha ================");
-    debug_print_tensor(dst);
+    //fprintf(stderr, "====================after scale alpha ================");
+    //debug_print_tensor(dst);
 
 }
 
@@ -7345,8 +7345,8 @@ static void ggml_compute_forward_soft_max_f32(
     GGML_ASSERT(ggml_is_contiguous(dst));
     GGML_ASSERT(ggml_are_same_shape(src0, dst));
 
-    fprintf(stderr, "Before softmax ....");
-    debug_print_tensor(src0);
+    //fprintf(stderr, "Before softmax ....");
+    //debug_print_tensor(src0);
     if (params->type == GGML_TASK_INIT || params->type == GGML_TASK_FINALIZE) {
         return;
     }
@@ -7407,8 +7407,8 @@ static void ggml_compute_forward_soft_max_f32(
         }
 #endif
     }
-    fprintf(stderr, "After softmax ....");
-    debug_print_tensor(dst);
+    //fprintf(stderr, "After softmax ....");
+    //debug_print_tensor(dst);
 }
 
 static void ggml_compute_forward_soft_max(
@@ -7517,8 +7517,7 @@ static void ggml_compute_forward_rope_f32(
                     float x1sin = x1*sin_theta;
 
                     dst_data[0] = x0cos - x1sin;
-                    fprintf(stderr, "[FIRST_HALF] x0: %f, x1: %f, cos: %f, sin: %f, x0cos: %f, x1sin: %f, dst_0: %f\n",
-                            x0, x1, cos_theta, sin_theta, x0cos, x1sin, dst_data[0]);
+                    //fprintf(stderr, "[FIRST_HALF] x0: %f, x1: %f, cos: %f, sin: %f, x0cos: %f, x1sin: %f, dst_0: %f\n",x0, x1, cos_theta, sin_theta, x0cos, x1sin, dst_data[0]);
                 }
 
                 int i00 = 0;
@@ -7542,10 +7541,9 @@ static void ggml_compute_forward_rope_f32(
                     float x1sin = x1*sin_theta;
 
                     dst_data[0] = x0cos + x1sin;
-                    fprintf(stderr, "[SECOND_HALF] x0: %f, x1: %f, cos: %f, sin: %f, x0cos: %f, x1sin: %f, dst_0: %f\n",
-                            x0, x1, cos_theta, sin_theta, x0cos, x1sin, dst_data[0]);
+                    //fprintf(stderr, "[SECOND_HALF] x0: %f, x1: %f, cos: %f, sin: %f, x0cos: %f, x1sin: %f, dst_0: %f\n",x0, x1, cos_theta, sin_theta, x0cos, x1sin, dst_data[0]);
                 }
-                fprintf(stderr, "[TWO_HALF] done for %d %d %d:\n", i2, i1, i0);
+                //fprintf(stderr, "[TWO_HALF] done for %d %d %d:\n", i2, i1, i0);
 
 /*
                 for (int i0 = 0; i0 < n_dims ; i0 += 1) {
@@ -7576,11 +7574,11 @@ static void ggml_compute_forward_rope_f32(
                             x0, x1, cos_theta, sin_theta, x0cos, x0sin, x1cos, x1sin, dst_data[0]);
                 }
 */
-                fprintf(stderr, "finished round %d * %d\n", i2, i1);
+                //fprintf(stderr, "finished round %d * %d\n", i2, i1);
             }
         }
     }
-    debug_print_tensor_3d(dst);
+    //debug_print_tensor_3d(dst);
 }
 
 static void ggml_compute_forward_rope_f16(
