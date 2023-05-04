@@ -135,6 +135,7 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
         fin.read((char *) &hparams.n_embd,  sizeof(hparams.n_embd));
         fin.read((char *) &hparams.n_head,  sizeof(hparams.n_head));
         fin.read((char *) &hparams.n_layer, sizeof(hparams.n_layer));
+        fin.read((char *) &hparams.n_rot, sizeof(hparams.n_rot));
         fin.read((char *) &hparams.f16,     sizeof(hparams.f16));
 
         printf("%s: n_vocab = %d\n", __func__, hparams.n_vocab);

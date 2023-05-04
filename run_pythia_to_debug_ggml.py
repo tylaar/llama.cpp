@@ -24,6 +24,52 @@ tokenizer = AutoTokenizer.from_pretrained(
 
 inputs = tokenizer("Hello, I am", return_tensors="pt")
 
+class RotaryEmbedding(torch.nn.Module):
+    def __init__(self, dim, max_position_embeddings, base=10000, device=None):
+        super().__init__()
+        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
+        self.register_buffer("inv_freq", inv_freq)
+
+        # Build here to make `torch.jit.trace` work.
+        self.max_seq_len_cached = max_position_embeddings
+        t = torch.arange(self.max_seq_len_cached, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
+        freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.cos_cached = emb.cos()[None, None, :, :]
+        self.sin_cached = emb.sin()[None, None, :, :]
+
+    def forward(self, x, seq_len=None):
+        # x: [bs, num_attention_heads, seq_len, head_size]
+        # This `if` block is unlikely to be run after we build sin/cos in `__init__`. Keep the logic here just in case.
+        if seq_len > self.max_seq_len_cached:
+            self.max_seq_len_cached = seq_len
+            t = torch.arange(self.max_seq_len_cached, device=x.device, dtype=self.inv_freq.dtype)
+            freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+            # Different from paper, but it uses a different permutation in order to obtain the same calculation
+            emb = torch.cat((freqs, freqs), dim=-1).to(x.device)
+            self.cos_cached = emb.cos()[None, None, :, :]
+            self.sin_cached = emb.sin()[None, None, :, :]
+        return self.cos_cached[:seq_len, ...].to(x.device), self.sin_cached[:seq_len, ...].to(x.device)
+
+
+def rotate_half(x):
+    """Rotates half the hidden dims of the input."""
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
+    gather_indices = position_ids[:, None, :, None]  # [bs, 1, seq_len, 1]
+    gather_indices = gather_indices.repeat(1, cos.shape[1], 1, cos.shape[3])
+    cos = torch.gather(cos.repeat(gather_indices.shape[0], 1, 1, 1), 2, gather_indices)
+    sin = torch.gather(sin.repeat(gather_indices.shape[0], 1, 1, 1), 2, gather_indices)
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    return q_embed.squeeze(), k_embed.squeeze()
+
+
 def generate_diag_mask(max_ndims):
     z = torch.zeros((max_ndims, max_ndims))
     for i, x in enumerate(z):
@@ -55,6 +101,7 @@ n_head = 8
 n_layer = 1
 # fout.write(struct.pack("i", 1))  # n_layer
 
+n_rot = 16
 # fout.write(struct.pack("i", ftype))
 ftype = 0
 
@@ -100,6 +147,9 @@ embd_in_data = list_vars["gpt_neox.embed_in.weight"]
 embd_out_data = list_vars["embed_out.weight"]
 
 # starting to evaluate
+# TODO: n_rot = 16
+rotary_emb = RotaryEmbedding(n_rot, n_ctx)
+
 embd_in = nn.Embedding(vocab_size, n_embd)
 embd_in.weight.data = embd_in_data
 embd_out = nn.Linear(n_embd, vocab_size, bias=False)
@@ -196,6 +246,18 @@ print(k_n_p)
 print("===============value_reshape_printing============")
 print(v_n_p)
 
+
+query_rot = q_n_p[..., : n_rot]
+query_pass = q_n_p[..., n_rot:]
+key_rot = k_n_p[..., : n_rot]
+key_pass = k_n_p[..., n_rot :]
+# TODO: no past considered yet.
+# Do rotary embedding
+cos, sin = rotary_emb(v_n_p, 4)
+
+q_r, k_r = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, torch.Tensor([[0, 1, 2, 3]]).long())
+q_n_p = torch.cat((q_r, query_pass), dim=-1)
+k_n_p = torch.cat((k_r, key_pass), dim=-1)
 # starting to do the fucking attention here.
 # starting to do the fucking attention here.
 # starting to do the fucking attention here.

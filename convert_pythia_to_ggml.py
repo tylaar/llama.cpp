@@ -51,6 +51,9 @@ fout.write(struct.pack("i", n_head))  # n_head
 n_layer = 1
 print('n_layer:', n_layer)
 fout.write(struct.pack("i", n_layer))  # n_layer
+n_rot = 16
+print("n_rot:", n_rot)
+fout.write(struct.pack("i", n_rot))
 
 ftype = 0
 fout.write(struct.pack("i", ftype))
