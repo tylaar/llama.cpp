@@ -532,6 +532,7 @@ std::vector<float> eval(
     */
     ggml_tensor* qkv_merged_debug;
     ggml_tensor* qkv_densed_debug;
+    ggml_tensor* qkv_final_debug;
 
     ggml_tensor* qkv_copy;
     for (int il = 0; il < n_layer; ++il) {
@@ -592,12 +593,14 @@ std::vector<float> eval(
                 ggml_build_forward_expand(&gf, ggml_cpy(ctx0, v_m, v));
 
             }
-            // q_reshape_debug = ggml_reshape_3d(ctx0, q_cur, n_embd / n_head, n_head, N);
+            auto Q = ggml_cpy(ctx0,
+                           q_m,
+                           ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, n_embd / n_head, n_head, N));
+            std::cout << "Q_addr: " << Q << std::endl;
+            std::cout << "Q_addr: " << q_m << std::endl;
             auto q = ggml_permute(ctx0,
                                   ggml_rope(ctx0,
-                                            ggml_reshape_3d(ctx0,
-                                                            q_m,
-                                                            n_embd / n_head, n_head, N),
+                                            Q,
                                             n_past, n_rot, 0),
                                   0, 2, 1, 3);
 
@@ -611,34 +614,20 @@ std::vector<float> eval(
                                             n_past, n_rot, 1),
                              0, 2, 1, 3);
 
-/*
-
-            auto q_rot = ggml_rope(ctx0,
-                                   q, 0, n_rot, 0);
-            auto k_rot = ggml_rope(ctx0,
-                                   k, 0, n_rot, 1);
-
-*/
-
             q_rot_debug = q;
             k_rot_debug = k;
             if (il == 1) {
                 l1_k_rot_debug = k;
                 l1_q_rot_debug = q;
             }
-            auto v_cur = ggml_add(ctx0,
-                                  ggml_mul_mat(ctx0, vw, cur),
-                                  ggml_repeat(ctx0, vb, cur));
-
-            auto v_permuted = ggml_permute(ctx0,
-                                           ggml_reshape_3d(ctx0,
-                                                           ggml_view_1d(ctx0, model.kv_self.v, (n_past + N) * n_embd,
-                                                                        il * n_ctx * ggml_element_size(model.kv_self.v) * n_embd),
-                                                           n_embd / n_head, n_head, n_past + N),
-                                      1, 2, 0, 3);
-            auto v = ggml_cpy(ctx0,
-                              v_permuted,
-                              ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, n_past + N, v_permuted->ne[1], v_permuted->ne[2]));
+            auto v_t = ggml_cpy(ctx0,
+                                ggml_permute(ctx0,
+                                               ggml_reshape_3d(ctx0,
+                                                               ggml_view_1d(ctx0, model.kv_self.v, (n_past + N) * n_embd,
+                                                                            il * n_ctx * ggml_element_size(model.kv_self.v) * n_embd),
+                                                               n_embd / n_head, n_head, n_past + N),
+                                               1, 2, 0, 3),
+                                  ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, n_past + N, n_embd / n_head, n_head));
             //q_debug = q;
             //k_debug = k;
             //v_debug = v;
@@ -652,7 +641,7 @@ std::vector<float> eval(
             auto qk_softmax = ggml_soft_max(ctx0, qk_causal_masked);
             //qk_softmax_debug = qk_softmax;
 
-            auto qkv_output = ggml_mul_mat(ctx0, qk_softmax, v);
+            auto qkv_output = ggml_mul_mat(ctx0, qk_softmax, v_t);
             //qkv_output_debug = qkv_output;
 
             auto qkv_permuted =
@@ -721,9 +710,10 @@ std::vector<float> eval(
             //ggml_build_forward_expand(&gf, qkv_t);
             //ggml_build_forward_expand(&gf, qkv_t_reshaped);
             ggml_build_forward_expand(&gf, inpSA);
+            ggml_build_forward_expand(&gf, Q);
             ggml_build_forward_expand(&gf, q);
             ggml_build_forward_expand(&gf, k);
-            ggml_build_forward_expand(&gf, v);
+            ggml_build_forward_expand(&gf, v_t);
             /*ggml_build_forward_expand(&gf, q_rot);
             ggml_build_forward_expand(&gf, k_rot);
             */
@@ -757,7 +747,7 @@ std::vector<float> eval(
             ggml_build_forward_expand(&gf, qkv_densed_debug);
 */
 
-            std::cout << "current q nelements:" << ggml_nelements(q) <<  " k nelem: " << ggml_nelements(k) << " v nelems:" << ggml_nelements(v) << std::endl;
+            std::cout << "current q nelements:" << ggml_nelements(q) <<  " k nelem: " << ggml_nelements(k) << " v nelems:" << ggml_nelements(v_t) << std::endl;
         }
 
     }
@@ -844,9 +834,9 @@ std::vector<float> eval(
     std::cout << "==========qkv_merged_printend=============" << std::endl;
     */
     std::cout << "==============rotated_query=============" << std::endl;
-    //debug_print_tensor_lite(l1_q_rot_debug);
+    // debug_print_tensor_lite(l1_q_rot_debug);
     std::cout << "==============rotated_key=============" << std::endl;
-    //debug_print_tensor_lite(l1_k_rot_debug);
+    // debug_print_tensor_lite(l1_k_rot_debug);
 
     std::cout << "==========qkv_densed_printing=============" << std::endl;
     debug_print_tensor_lite(qkv_copy);
@@ -907,8 +897,7 @@ int main() {
         n_past += embd_inp.size();
         embd_inp.clear();
         int maxElementIndex = std::max_element(v.begin(),v.end()) - v.begin();
-        int maxElement = *std::max_element(v.begin(), v.end());
-        std::cout << maxElement << std::endl;
+        std::cout << maxElementIndex << std::endl;
         embd_inp.push_back(maxElementIndex);
     }
 }
