@@ -704,7 +704,7 @@ int main() {
     int64_t t0 = ggml_time_us();
 
     for (int i = 0 ; i < 256 ; i++) {
-        auto v = eval(model, 16, n_past, embd_inp, mem_per_token);
+        auto v = eval(model, 2, n_past, embd_inp, mem_per_token);
         n_past += embd_inp.size();
         embd_inp.clear();
         int maxElementIndex = std::max_element(v.begin(),v.end()) - v.begin();
