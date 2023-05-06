@@ -7,7 +7,7 @@ import numpy as np
 
 from transformers import GPTNeoXForCausalLM, AutoTokenizer
 
-dir_model = "/Users/yifengyu/hack/local_models"
+dir_model = "/Users/yifengyu/hack/models"
 
 model = GPTNeoXForCausalLM.from_pretrained(
     dir_model + "/pythia-70m",

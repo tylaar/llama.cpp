@@ -888,6 +888,7 @@ int main() {
     int n_past = 0;
     std::vector<float> logits_group;
     std::vector<ggml_tensor*> logits;
+    std::vector<int> history;
 
     std::vector<gpt_vocab::id> embd_inp = {12092, 13, 309, 717};
     size_t mem_per_token = 0;
@@ -899,5 +900,6 @@ int main() {
         int maxElementIndex = std::max_element(v.begin(),v.end()) - v.begin();
         std::cout << maxElementIndex << std::endl;
         embd_inp.push_back(maxElementIndex);
+        history.push_back(maxElementIndex);
     }
 }
