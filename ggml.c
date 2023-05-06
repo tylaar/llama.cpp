@@ -5203,11 +5203,11 @@ static void ggml_compute_forward_dup_f32(
         return;
     }
 
-    if (dst->n_dims == 1) {
+    /*if (dst->n_dims == 1) {
         debug_print_tensor_1d(dst);
         debug_print_tensor(src0);
     }
-
+*/
     const int64_t ne00 = src0->ne[0];
     const int64_t ne01 = src0->ne[1];
     const int64_t ne02 = src0->ne[2];
@@ -5289,10 +5289,12 @@ static void ggml_compute_forward_dup_f32(
     } else {
         GGML_ASSERT(false); // TODO: implement
     }
+/*
     if (dst->n_dims == 1) {
         debug_print_tensor_1d(dst);
     }
 
+*/
 }
 
 static void ggml_compute_forward_dup(
@@ -7497,7 +7499,7 @@ static void ggml_compute_forward_rope_f32(
     int ir = 0;
 
     float temp[64] = {0.0};
-    debug_print_tensor_3d(src0);
+    //debug_print_tensor_3d(src0);
     // TODO: hacked by yifeng, directly slice only 1/4 of the each lastest elements.
     for (int64_t i3 = 0; i3 < ne3; i3++) {
         for (int64_t i2 = (mode == 0 ? 0 : n_past); i2 < ne2; i2++) {
@@ -7531,7 +7533,7 @@ static void ggml_compute_forward_rope_f32(
                     float x1sin = x1*sin_theta;
 
                     dst_data[0] = x0cos - x1sin;
-                    fprintf(stderr, "[FIRST_HALF] x0: %f, x1: %f, cos: %f, sin: %f, x0cos: %f, x1sin: %f, dst_0: %f\n",x0, x1, cos_theta, sin_theta, x0cos, x1sin, dst_data[0]);
+                    //fprintf(stderr, "[FIRST_HALF] x0: %f, x1: %f, cos: %f, sin: %f, x0cos: %f, x1sin: %f, dst_0: %f\n",x0, x1, cos_theta, sin_theta, x0cos, x1sin, dst_data[0]);
                 }
 
                 int i00 = 0;
@@ -7555,7 +7557,7 @@ static void ggml_compute_forward_rope_f32(
                     float x1sin = x1*sin_theta;
 
                     dst_data[0] = x0cos + x1sin;
-                    fprintf(stderr, "[SECOND_HALF] x0: %f, x1: %f, cos: %f, sin: %f, x0cos: %f, x1sin: %f, dst_0: %f\n",x0, x1, cos_theta, sin_theta, x0cos, x1sin, dst_data[0]);
+                    //fprintf(stderr, "[SECOND_HALF] x0: %f, x1: %f, cos: %f, sin: %f, x0cos: %f, x1sin: %f, dst_0: %f\n",x0, x1, cos_theta, sin_theta, x0cos, x1sin, dst_data[0]);
                 }
                 //fprintf(stderr, "[TWO_HALF] done for %d %d %d:\n", i2, i1, i0);
 
@@ -7592,7 +7594,7 @@ static void ggml_compute_forward_rope_f32(
             }
         }
     }
-    debug_print_tensor_3d(dst);
+    //debug_print_tensor_3d(dst);
 }
 
 static void ggml_compute_forward_rope_f16(
