@@ -125,6 +125,8 @@ struct test_model {
     std::map<std::string, struct ggml_tensor *> tensors;
 };
 
+size_t get_memory_requirement(size_t ctx_size, ggml_type &wtype, const test_hparams &hparams);
+
 gpt_vocab build_vocab() {
 
     gpt_vocab* vocab = new gpt_vocab();
@@ -222,41 +224,7 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
         return false;
     }
 
-    const int n_embd  = hparams.n_embd;
-    const int n_layer = hparams.n_layer;
-    const int n_ctx   = hparams.n_ctx;
-    const int n_vocab = hparams.n_vocab;
-    const int n_rot = hparams.n_rot;
-
-    ctx_size += n_embd*n_vocab*ggml_type_sizef(wtype); // embed_in_wte
-    ctx_size += n_embd*n_vocab* ggml_type_sizef(wtype); // embed_out_wte
-    ctx_size += n_embd * ggml_type_sizef(wtype); // final norm weight
-    ctx_size += n_embd * ggml_type_sizef(wtype);
-    {
-        ctx_size += n_layer*(3*n_embd*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_k_v_w TODO: in qkv in total, not isolated yet.
-        ctx_size += n_layer*(3*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_k_v_b;
-
-        ctx_size += n_layer*(n_embd* ggml_type_sizef(GGML_TYPE_F32)); // layer_norm_w;
-        ctx_size += n_layer*(n_embd* ggml_type_sizef(GGML_TYPE_F32)); // layer_norm_b;
-
-        ctx_size += n_layer*(n_embd* ggml_type_sizef(GGML_TYPE_F32)); // post_layer_norm_w;
-        ctx_size += n_layer*(n_embd* ggml_type_sizef(GGML_TYPE_F32)); // post_layer_norm_b;
-
-        ctx_size += n_layer*(n_embd* n_embd* ggml_type_size(GGML_TYPE_F32)); // output_dense_weight
-        ctx_size += n_layer*(n_embd * ggml_type_sizef(GGML_TYPE_F32)); // output_dense_bias
-
-        // ff part
-        ctx_size += n_layer*(n_embd*n_embd*4 * ggml_type_size(GGML_TYPE_F32));
-        ctx_size += n_layer*(n_embd*4 * ggml_type_size(GGML_TYPE_F32));
-        ctx_size += n_layer*(n_embd*n_embd*4 * ggml_type_size(GGML_TYPE_F32));
-        ctx_size += n_layer*(n_embd * ggml_type_size(GGML_TYPE_F32));
-
-        ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F32); // memory_k TODO for caching??
-        ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F32); // memory_v TODO for caching??
-
-    }
-    ctx_size += n_embd * ggml_type_sizef(GGML_TYPE_F32);
-    ctx_size += (5 + 10*n_layer)*256*2; // object overhead
+    ctx_size = get_memory_requirement(ctx_size, wtype, hparams);
 
     printf("%s: ggml ctx size = %6.2f MB\n", __func__, ctx_size/(1024.0*1024.0));
 
@@ -446,6 +414,46 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
     return true;
 }
 
+size_t get_memory_requirement(size_t ctx_size, ggml_type &wtype, const test_hparams &hparams) {
+    const int n_embd  = hparams.n_embd;
+    const int n_layer = hparams.n_layer;
+    const int n_ctx   = hparams.n_ctx;
+    const int n_vocab = hparams.n_vocab;
+    const int n_rot = hparams.n_rot;
+
+    ctx_size += n_embd*n_vocab*ggml_type_sizef(wtype); // embed_in_wte
+    ctx_size += n_embd*n_vocab* ggml_type_sizef(wtype); // embed_out_wte
+    ctx_size += n_embd * ggml_type_sizef(wtype); // final norm weight
+    ctx_size += n_embd * ggml_type_sizef(wtype);
+    {
+        ctx_size += n_layer*(3*n_embd*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_k_v_w TODO: in qkv in total, not isolated yet.
+        ctx_size += n_layer*(3*n_embd*ggml_type_sizef(GGML_TYPE_F32)); // attn_k_v_b;
+
+        ctx_size += n_layer*(n_embd* ggml_type_sizef(GGML_TYPE_F32)); // layer_norm_w;
+        ctx_size += n_layer*(n_embd* ggml_type_sizef(GGML_TYPE_F32)); // layer_norm_b;
+
+        ctx_size += n_layer*(n_embd* ggml_type_sizef(GGML_TYPE_F32)); // post_layer_norm_w;
+        ctx_size += n_layer*(n_embd* ggml_type_sizef(GGML_TYPE_F32)); // post_layer_norm_b;
+
+        ctx_size += n_layer*(n_embd* n_embd* ggml_type_size(GGML_TYPE_F32)); // output_dense_weight
+        ctx_size += n_layer*(n_embd * ggml_type_sizef(GGML_TYPE_F32)); // output_dense_bias
+
+        // ff part
+        ctx_size += n_layer*(n_embd*n_embd*4 * ggml_type_size(GGML_TYPE_F32));
+        ctx_size += n_layer*(n_embd*4 * ggml_type_size(GGML_TYPE_F32));
+        ctx_size += n_layer*(n_embd*n_embd*4 * ggml_type_size(GGML_TYPE_F32));
+        ctx_size += n_layer*(n_embd * ggml_type_size(GGML_TYPE_F32));
+
+        ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F32); // memory_k TODO for caching??
+        ctx_size += n_ctx*n_layer*n_embd*ggml_type_sizef(GGML_TYPE_F32); // memory_v TODO for caching??
+
+    }
+    ctx_size += 4 * n_embd * n_embd * ggml_type_sizef(GGML_TYPE_F32);
+    ctx_size += (20 + 40*n_layer)*256*2; // object overhead
+
+    return ctx_size;
+}
+
 std::string default_prompts = "Hello, I am";
 
 std::vector<float> eval(
@@ -467,12 +475,12 @@ std::vector<float> eval(
     const int n_hidden = n_embd * 3;
     const int head_size = n_embd/n_head;
 
-    static size_t buf_size = 256u*1024*1024;
+    static size_t buf_size = 256u*1024*1024*2;
     static void * buf = malloc(buf_size);
 
     if (mem_per_token > 0 && mem_per_token*N > buf_size) {
-        const size_t buf_size_new = 1.1*(mem_per_token*N); // add 10% to account for ggml object overhead
-        //printf("\n%s: reallocating buffer from %zu to %zu bytes\n", __func__, buf_size, buf_size_new);
+        const size_t buf_size_new = 1.2*(mem_per_token*N); // add 10% to account for ggml object overhead
+        printf("\n%s: reallocating buffer from %zu to %zu bytes\n", __func__, buf_size, buf_size_new);
 
         // reallocate
         buf_size = buf_size_new;
@@ -494,7 +502,7 @@ std::vector<float> eval(
 
     struct ggml_tensor * embd = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, N);
     memcpy(embd->data, embd_inp.data(), N*ggml_element_size(embd));
-    ggml_tensor *alpha = ggml_new_f32(ctx0, 0.1250);
+    ggml_tensor *alpha = ggml_new_f32(ctx0, 0.1118);
     // embed_in_wte
     struct ggml_tensor * inpL = ggml_get_rows(ctx0, model.embed_in_wte, embd);
     //ggml_build_forward_expand(&gf, inpL);
@@ -637,7 +645,7 @@ std::vector<float> eval(
 
             ggml_build_forward_expand(&gf, inpL);
 
-            std::cout << "current q nelements:" << ggml_nelements(q) <<  " k nelem: " << ggml_nelements(k) << " v nelems:" << ggml_nelements(v_t) << std::endl;
+            //std::cout << "current q nelements:" << ggml_nelements(q) <<  " k nelem: " << ggml_nelements(k) << " v nelems:" << ggml_nelements(v_t) << std::endl;
         }
 
     }
@@ -673,7 +681,7 @@ std::vector<float> eval(
 
 int main() {
 
-    std::string fname = "/Users/yifengyu/hack/models/test/test.bin";
+    std::string fname = "/Users/yifengyu/hack/models/test/test-dolly-v2-3b.bin";
     test_model model;
     auto vocab = build_vocab();
 
@@ -690,11 +698,13 @@ int main() {
     std::vector<ggml_tensor*> logits;
     std::vector<int> history;
 
-    std::vector<gpt_vocab::id> embd_inp = {12092, 13, 309, 717};
+    std::vector<gpt_vocab::id> embd_inp = {30003,   310,   271,  9775,   326,  8631,   247,  4836,    15, 19566,   247,  2380,   326, 20420, 29141,   253,  2748,    15,   535, 50278,   187,  7883,   310,  6729,    32,   535, 50279,   187};
     size_t mem_per_token = 0;
 
-    for (int i = 0 ; i < 10 ; i++) {
-        auto v = eval(model, 1, n_past, embd_inp, mem_per_token);
+    int64_t t0 = ggml_time_us();
+
+    for (int i = 0 ; i < 256 ; i++) {
+        auto v = eval(model, 16, n_past, embd_inp, mem_per_token);
         n_past += embd_inp.size();
         embd_inp.clear();
         int maxElementIndex = std::max_element(v.begin(),v.end()) - v.begin();
@@ -703,6 +713,7 @@ int main() {
         history.push_back(maxElementIndex);
     }
 
+    std::cout << "time: " << (ggml_time_us() - t0) << "us" << std::endl;
     for (auto i : history) {
         std::cout << i << ",";
     }

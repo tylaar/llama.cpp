@@ -7498,7 +7498,7 @@ static void ggml_compute_forward_rope_f32(
     // row index used to determine which thread to use
     int ir = 0;
 
-    float temp[64] = {0.0};
+    float temp[256] = {0.0};
     //debug_print_tensor_3d(src0);
     // TODO: hacked by yifeng, directly slice only 1/4 of the each lastest elements.
     for (int64_t i3 = 0; i3 < ne3; i3++) {
