@@ -111,6 +111,8 @@ std::map<std::string, int32_t> json_parse(const std::string & fname);
 //
 std::vector<gpt_vocab::id> gpt_tokenize(const gpt_vocab & vocab, const std::string & text);
 
+std::string gpt_untokenize(const std::string & word);
+
 // TODO: this is probably wrong, but I cannot figure out how this tokenizer works ..
 // ref: https://github.com/google/sentencepiece
 std::vector<gpt_vocab::id> llama_tokenize(const gpt_vocab & vocab, const std::string & text, bool bos);

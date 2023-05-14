@@ -22,6 +22,39 @@ tokenizer = AutoTokenizer.from_pretrained(
     )
 
 
+# ref: https://github.com/openai/gpt-2/blob/master/src/encoder.py
+def bytes_to_unicode():
+    """
+    Returns list of utf-8 byte and a corresponding list of unicode strings.
+    The reversible bpe codes work on unicode strings.
+    This means you need a large # of unicode characters in your vocab if you want to avoid UNKs.
+    When you're at something like a 10B token dataset you end up needing around 5K for decent coverage.
+    This is a signficant percentage of your normal, say, 32K bpe vocab.
+    To avoid that, we want lookup tables between utf-8 bytes and unicode strings.
+    And avoids mapping to whitespace/control characters the bpe code barfs on.
+    """
+    bs = list(range(ord("!"), ord("~")+1))+list(range(ord("¡"), ord("¬")+1))+list(range(ord("®"), ord("ÿ")+1))
+    cs = bs[:]
+    n = 0
+    for b in range(2**8):
+        if b not in bs:
+            bs.append(b)
+            cs.append(2**8+n)
+            n += 1
+    cs = [chr(n) for n in cs]
+    return dict(zip(bs, cs))
+
+
+def write_tokens(fout, tokenizer):
+    print("writing vocab size: ", len(tokenizer.vocab))
+    for k, v in tokenizer.vocab.items():
+        fout.write(struct.pack("i", v))  # token_id
+        bs = k.encode('utf-8')
+        fout.write(struct.pack("i", len(bs)))  # token_len
+        fout.write(bs)  # token
+        print("encoding ", v, " name: ", k, " len: ", len(k), " len_bs: ", len(bs))
+
+
 def layer_transform(n_layer, list_vars, new_list_vars):
     c_attn_q_idx = np.array([], dtype=int)
     c_attn_k_idx = np.array([], dtype=int)
@@ -88,9 +121,14 @@ def layer_transform(n_layer, list_vars, new_list_vars):
 
 dir_out_model = '/Users/yifengyu/hack/models/test'
 
-fname_out = dir_out_model + "/test.bin";
+fname_out = dir_out_model + "/test.bin"
+vocab_out = dir_out_model + "/test-vocab.bin"
 
 fout = open(fname_out, "wb")
+vout = open(vocab_out, "wb")
+
+vocab = tokenizer.vocab
+
 
 fout.write(struct.pack("i", 0x67676d6c))  # magic: ggml in hex
 # todo: which vocab_sie is correct? in config.json or in tokenizer?
@@ -99,6 +137,10 @@ fout.write(struct.pack("i", 0x67676d6c))  # magic: ggml in hex
 vocab_size = 50304
 print('vocab_size:', vocab_size)
 fout.write(struct.pack("i", vocab_size))
+
+no_pad_vocab_size = len(tokenizer.vocab)
+print('no_pad_vocab_size:', vocab_size)
+fout.write(struct.pack("i", no_pad_vocab_size))
 
 n_ctx = 32
 print('n_ctx:', n_ctx)
@@ -121,6 +163,19 @@ fout.write(struct.pack("i", n_rot))
 
 ftype = 0
 fout.write(struct.pack("i", ftype))
+
+#byte_encoder = bytes_to_unicode()
+#byte_decoder = {v:k for k, v in byte_encoder.items()}
+
+#for key in vocab:
+#    text = None
+#    if key.strip() == '':
+#        continue
+#    text = bytearray([byte_decoder[c] for c in key])
+#    fout.write(struct.pack("i", len(text)))
+#    fout.write(text)
+
+write_tokens(fout, tokenizer)
 
 head_size = int(n_embd/n_head)
 

@@ -12,11 +12,12 @@
 #include <vector>
 #include <iostream>
 #include <unistd.h>
-
-static const size_t MB = 1024*1024;
+#include <regex>
+#include "llama.h"
 
 struct test_hparams {
     int32_t n_vocab = 10;
+    int32_t n_tokenizer_vocab = 10;
     int32_t n_ctx = 10;
     int32_t n_embd = 4;
     int32_t n_head = 2;
@@ -26,7 +27,7 @@ struct test_hparams {
 };
 
 
-class llama_kv_cache {
+class pythia_kv_cache {
 public:
     struct ggml_tensor * k;
     struct ggml_tensor * v;
@@ -120,49 +121,40 @@ struct test_model {
     struct ggml_context * ctx;
     // key + value cache for the self attention
     // TODO: move to llama_state
-    struct llama_kv_cache kv_self;
+    struct pythia_kv_cache kv_self;
 
     std::map<std::string, struct ggml_tensor *> tensors;
 };
 
 size_t get_memory_requirement(size_t ctx_size, ggml_type &wtype, const test_hparams &hparams);
 
-gpt_vocab build_vocab() {
 
+gpt_vocab build_vocab(int vocab_size, std::ifstream& fin) {
     gpt_vocab* vocab = new gpt_vocab();
-    vocab->id_to_token[0] = "a";
-    vocab->token_to_id["a"] = 0;
+    // load vocab
+    {
+        std::string word;
+        //vocab->id_to_token.resize(vocab_size);
+        std::vector<char> tmp(64);
 
-    vocab->id_to_token[1] = "b";
-    vocab->token_to_id["b"] = 1;
+        for (int i = 0; i < vocab_size; i++) {
+            uint32_t len;
+            uint32_t token_id;
 
-    vocab->id_to_token[2] = "c";
-    vocab->token_to_id["c"] = 2;
+            fin.read((char *) &token_id, sizeof(token_id));
+            fin.read((char *) &len, sizeof(len));
 
-    vocab->id_to_token[3] = "d";
-    vocab->token_to_id["d"] = 3;
-
-    vocab->id_to_token[4] = "e";
-    vocab->token_to_id["e"] = 4;
-
-    vocab->id_to_token[5] = "f";
-    vocab->token_to_id["f"] = 5;
-
-    vocab->id_to_token[6] = "g";
-    vocab->token_to_id["g"] = 6;
-
-    vocab->id_to_token[7] = "h";
-    vocab->token_to_id["h"] = 7;
-
-    vocab->id_to_token[8] = "i";
-    vocab->token_to_id["i"] = 8;
-
-    vocab->id_to_token[9] = "j";
-    vocab->token_to_id["j"] = 9;
+            word.resize(len);
+            fin.read((char *) word.data(), len);
+            std::cout << "reading token_id: " << token_id << " word: " << word << " with len: " << len << std::endl;
+            vocab->token_to_id[word] = token_id;
+            vocab->id_to_token[token_id] = word;
+        }
+    }
     return *vocab;
 }
 
-bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab) {
+bool load_model(const std::string & fname, test_model & model, gpt_vocab &vocab) {
     auto fin = std::ifstream(fname, std::ios::binary);
     if (!fin) {
         fprintf(stderr, "%s: failed to open '%s'\n", __func__, fname.c_str());
@@ -188,6 +180,7 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
         auto & hparams = model.hparams;
 
         fin.read((char *) &hparams.n_vocab, sizeof(hparams.n_vocab));
+        fin.read((char *) &hparams.n_tokenizer_vocab, sizeof(hparams.n_tokenizer_vocab));
         fin.read((char *) &hparams.n_ctx,   sizeof(hparams.n_ctx));
         fin.read((char *) &hparams.n_embd,  sizeof(hparams.n_embd));
         fin.read((char *) &hparams.n_head,  sizeof(hparams.n_head));
@@ -218,6 +211,8 @@ bool load_model(const std::string & fname, test_model & model, gpt_vocab & vocab
     }
 
     const auto & hparams = model.hparams;
+
+    vocab = build_vocab(hparams.n_tokenizer_vocab, fin);
 
     if (!model.kv_self.kv_cache_init(model.hparams, GGML_TYPE_F32, model.hparams.n_ctx)) {
         fprintf(stderr, "%s: kv_cache_init() failed for self-attention cache\n", __func__);
@@ -681,9 +676,9 @@ std::vector<float> eval(
 
 int main() {
 
-    std::string fname = "/Users/yifengyu/hack/models/test/test-dolly-v2-3b.bin";
+    std::string fname = "/Users/yifengyu/hack/models/test/test.bin";
     test_model model;
-    auto vocab = build_vocab();
+    gpt_vocab vocab;
 
     // load the model
     {
@@ -698,12 +693,15 @@ int main() {
     std::vector<ggml_tensor*> logits;
     std::vector<int> history;
 
-    std::vector<gpt_vocab::id> embd_inp = {30003,   310,   271,  9775,   326,  8631,   247,  4836,    15, 19566,   247,  2380,   326, 20420, 29141,   253,  2748,    15,   535, 50278,   187,  7883,   310,  6729,    32,   535, 50279,   187};
+    //std::vector<gpt_vocab::id> embd_inp = {30003,   310,   271,  9775,   326,  8631,   247,  4836,    15, 19566,   247,  2380,   326, 20420, 29141,   253,  2748,    15,   535, 50278,   187,  7883,   310,  6729,    32,   535, 50279,   187};
+    //std::vector<gpt_vocab::id> embd_inp = {7883, 310, 6729, 32};
+    auto embd_inp = gpt_tokenize(vocab, "Hello, I am");
+
     size_t mem_per_token = 0;
 
     int64_t t0 = ggml_time_us();
 
-    for (int i = 0 ; i < 256 ; i++) {
+    for (int i = 0 ; i < 15 ; i++) {
         auto v = eval(model, 2, n_past, embd_inp, mem_per_token);
         n_past += embd_inp.size();
         embd_inp.clear();
@@ -715,7 +713,7 @@ int main() {
 
     std::cout << "time: " << (ggml_time_us() - t0) << "us" << std::endl;
     for (auto i : history) {
-        std::cout << i << ",";
+        std::cout << gpt_untokenize(vocab.id_to_token.at(i));
     }
     std::cout << std::endl;
 }

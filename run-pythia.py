@@ -19,6 +19,9 @@ tokenizer = AutoTokenizer.from_pretrained(
     )
 
 inputs = tokenizer("Hello, I am", return_tensors="pt")
+id_to_words = {}
+for k, v in tokenizer.vocab.items():
+    id_to_words[v] = k
 tokens = model.generate(**inputs)
 tokenizer.decode(tokens[0])
 print(tokenizer.decode(tokens[0]))

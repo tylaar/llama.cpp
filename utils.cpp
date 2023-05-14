@@ -15,6 +15,9 @@
  #include <alloca.h>
  #endif
 
+#include <string>
+#include <algorithm>
+
 bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
     // determine sensible default number of threads.
     // std::thread::hardware_concurrency may not be equal to the number of cores, or may return 0.
@@ -232,7 +235,14 @@ std::map<std::string, int32_t> json_parse(const std::string & fname) {
     return result;
 }
 
+std::string gpt_untokenize(const std::string & word) {
+    std::string res = std::string(word);
+    ::replace(res,  "Ġ", " ");
+    return res;
+}
+
 std::vector<gpt_vocab::id> gpt_tokenize(const gpt_vocab & vocab, const std::string & text) {
+
     std::vector<std::string> words;
 
     // first split the text into words
@@ -253,9 +263,11 @@ std::vector<gpt_vocab::id> gpt_tokenize(const gpt_vocab & vocab, const std::stri
 
     // find the longest tokens that form the words:
     std::vector<gpt_vocab::id> tokens;
-    for (const auto & word : words) {
-        if (word.size() == 0) continue;
+    for (const auto & w : words) {
+        if (w.size() == 0) continue;
 
+        auto word = std::string(w);
+        //::replace(word, " ", "Ġ");
         int i = 0;
         int n = word.size();
         while (i < n) {
@@ -284,6 +296,9 @@ std::vector<gpt_vocab::id> gpt_tokenize(const gpt_vocab & vocab, const std::stri
         }
     }
 
+    for (auto i : tokens) {
+        std::cout << "token_id : " << i << " word: " << vocab.id_to_token.at(i) << std::endl;
+    }
     return tokens;
 }
 
